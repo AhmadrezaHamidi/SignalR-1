@@ -2,7 +2,7 @@ class WebSocketTransport implements ITransport {
     private webSocket: WebSocket;
 
     connect(url: string, queryString: string = ""): Promise<void> {
-        return new Promise((resolve, reject) => {
+        return new Promise<void>((resolve, reject) => {
             url = url.replace(/^http/, "ws");
             let connectUrl = url + "/ws?" + queryString;
 

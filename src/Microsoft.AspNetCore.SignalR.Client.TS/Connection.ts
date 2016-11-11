@@ -20,7 +20,7 @@ class Connection {
         this.connectionState = ConnectionState.Disconnected;
     }
 
-    start(transportNames?: string[]): Promise<void> {
+    async start(transportNames?: string[]): Promise<void> {
         if (this.connectionState != ConnectionState.Disconnected) {
             throw new Error("Cannot start a connection that is not in the 'Disconnected' state");
         }
@@ -30,21 +30,18 @@ class Connection {
             throw new Error("No valid transports requested.");
         }
 
-        return new HttpClient().get(`${this.url}/getid?${this.queryString}`)
-            .then(connectionId => {
-                this.connectionId = connectionId;
-                this.queryString = `id=${connectionId}&${this.connectionId}`;
-                return this.tryStartTransport(transports, 0);
-            })
-            .then(transport => {
-                this.transport = transport;
-                this.connectionState = ConnectionState.Connected;
-            })
-            .catch(e => {
-                console.log("Failed to start the connection.")
-                this.connectionState = ConnectionState.Disconnected;
-                throw e;
-            });
+        this.connectionId = await new HttpClient().get(`${this.url}/getid?${this.queryString}`);
+        this.queryString = `id=${this.connectionId}`;
+        
+        try {
+            this.transport = await this.tryStartTransport(transports);
+            this.connectionState = ConnectionState.Connected;
+        }
+        catch (e) {
+            console.log("Failed to start the connection.")
+            this.connectionState = ConnectionState.Disconnected;
+            throw e;
+        }
     }
 
     private filterTransports(transportNames: string[]): ITransport[] {
@@ -71,32 +68,31 @@ class Connection {
         return transports;
     }
 
-    private tryStartTransport(transports: ITransport[], index: number): Promise<ITransport> {
+    private async tryStartTransport(transports: ITransport[]): Promise<ITransport> {
         let thisConnection = this;
-        transports[index].onDataReceived = data => thisConnection.dataReceivedCallback(data);
-        transports[index].onError = e => thisConnection.stopConnection(e);
+        for (var index = 0; index < transports.length;) {
+            var transport = transports[index];
+            transport.onDataReceived = data => thisConnection.dataReceivedCallback(data);
+            transport.onError = e => thisConnection.stopConnection(e);
 
-        return transports[index].connect(this.url, this.queryString)
-            .then(() => {
-                return transports[index];
-            })
-            .catch(e => {
+            try {
+                await transport.connect(this.url, this.queryString);
+                return transport;
+            }
+            catch (ex) {
                 index++;
-                if (index < transports.length) {
-                    return this.tryStartTransport(transports, index);
-                }
-                else
-                {
+                if (index >= transports.length) {
                     throw new Error('No transport could be started.')
                 }
-            })
+            }
+        }
     }
 
-    send(data: any): Promise<void> {
+    async send(data: any): Promise<void> {
         if (this.connectionState != ConnectionState.Connected) {
             throw new Error("Cannot send data if the connection is not in the 'Connected' State");
         }
-        return this.transport.send(data);
+        await this.transport.send(data);
     }
 
     stop(): void {

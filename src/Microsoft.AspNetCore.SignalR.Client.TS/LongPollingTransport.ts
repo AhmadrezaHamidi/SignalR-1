@@ -54,8 +54,8 @@ class LongPollingTransport implements ITransport {
         this.pollXhr.send();
     }
 
-    send(data: any): Promise<void> {
-        return new HttpClient().post(this.url + "/send?" + this.queryString, data);
+    async send(data: any): Promise<void> {
+        await new HttpClient().post(this.url + "/send?" + this.queryString, data);
     }
 
     stop(): void {

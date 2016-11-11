@@ -30,7 +30,7 @@ namespace Microsoft.AspNetCore.Sockets
                 return;
             }
 
-            var ws = await context.WebSockets.AcceptWebSocketAsync();
+            var ws = await context.WebSockets.AcceptWebSocketAsync("mqttv3.1");
 
             // REVIEW: Should we track this task? Leaving things like this alive usually causes memory leaks :)
             // The reason we don't await this is because the channel is disposed after this loop returns

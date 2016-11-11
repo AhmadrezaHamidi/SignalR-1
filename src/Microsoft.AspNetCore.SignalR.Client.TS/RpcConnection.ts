@@ -12,7 +12,7 @@ interface InvocationResultDescriptor {
 
 class RpcConnection {
     private connection: Connection;
-    private callbacks: Map<string, (any) => void>;
+    private callbacks: Map<string, (InvocationDescriptor) => void>;
     private methods: Map<string, (...args:any[]) => void>;
     private id: number;
 
@@ -30,7 +30,7 @@ class RpcConnection {
     }
 
     private dataReceived(data: any) {
-        //TODO: separate JSON parsing
+        // TODO: separate JSON parsing
         var descriptor = JSON.parse(data);
         if (descriptor.Method === undefined) {
             let invocationResult: InvocationResultDescriptor = descriptor;
@@ -58,7 +58,7 @@ class RpcConnection {
         return this.connection.stop();
     }
 
-    invoke(methodName: string, ...args: any[]): Promise<void> {
+    async invoke(methodName: string, ...args: any[]): Promise<void> {
 
         let id = this.id;
         this.id++;
@@ -79,7 +79,7 @@ class RpcConnection {
                 }
             };
 
-            //TODO: separate conversion to enable different data formats
+            // TODO: separate conversion to enable different data formats
             this.connection.send(JSON.stringify(invocationDescriptor))
                 .catch(e => {
                     // TODO: remove callback

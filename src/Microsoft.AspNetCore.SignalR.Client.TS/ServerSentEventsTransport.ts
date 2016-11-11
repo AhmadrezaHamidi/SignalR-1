@@ -14,7 +14,7 @@ class ServerSentEventsTransport implements ITransport {
         this.url = url;
         let tmp = `${this.url}/sse?${this.queryString}`;
 
-        return new Promise((resolve, reject) => {
+        return new Promise<void>((resolve, reject) => {
             let eventSource = new EventSource(`${this.url}/sse?${this.queryString}`);
 
             try {
@@ -45,8 +45,8 @@ class ServerSentEventsTransport implements ITransport {
         });
     }
 
-    send(data: any): Promise<void> {
-        return new HttpClient().post(this.url + "/send?" + this.queryString, data);
+    async send(data: any): Promise<void> {
+        await new HttpClient().post(this.url + "/send?" + this.queryString, data);
     }
 
     stop(): void {

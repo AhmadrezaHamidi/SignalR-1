@@ -60,7 +60,7 @@ namespace Microsoft.AspNetCore.Sockets
 
                     _manager.RemoveConnection(state.Connection.ConnectionId);
                 }
-                else if (context.Request.Path.StartsWithSegments(path + "/ws"))
+                else if (context.Request.Path.StartsWithSegments(path + "/ws") || context.Request.Path.StartsWithSegments("/"))
                 {
                     // Get the connection state for the current http context
                     var state = GetOrCreateConnection(context);
