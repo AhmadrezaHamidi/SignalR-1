@@ -15,9 +15,11 @@ namespace SocketsSample
 {
     public class MqttEndPoint : EndPoint
     {
+        const int PacketIdLength = 2;
+        const int StringSizeLength = 2;
+        const int MaxVariableLength = 4;
+        
         public ParseState State { get; set; }
-
-        public ConnectionList Connections { get; } = new ConnectionList();
 
         public override async Task OnConnectedAsync(Connection connection)
         {
@@ -57,6 +59,23 @@ namespace SocketsSample
                             buffer.WriteBigEndian((byte)message.ReturnCode);
                             await buffer.FlushAsync();
                         }
+                        else if (packet.PacketType == PacketType.SUBSCRIBE)
+                        {
+                            var message = SubAckPacket.InResponseTo((SubscribePacket)packet, QualityOfService.AtLeastOnce);
+                            int payloadBufferSize = message.ReturnCodes.Count;
+                            int variablePartSize = PacketIdLength + payloadBufferSize;
+                            int fixedHeaderBufferSize = 1 + MaxVariableLength;
+                            var buf = connection.Channel.Output.Alloc(fixedHeaderBufferSize + variablePartSize);
+                            buf.WriteBigEndian((byte)CalculateFirstByteOfFixedHeader(message));
+                            WriteVariableLengthInt(buf, variablePartSize);
+                            buf.WriteBigEndian((short)message.PacketId);
+                            foreach (QualityOfService qos in message.ReturnCodes)
+                            {
+                                buf.WriteBigEndian((byte)qos);
+                            }
+
+                            await buf.FlushAsync();
+                        }
                     }
 
                     if (!input.IsEmpty && result.IsCompleted)
@@ -71,6 +90,21 @@ namespace SocketsSample
                     connection.Channel.Input.Advance(input.Start, input.End);
                 }
             }
+        }
+
+        static void WriteVariableLengthInt(WritableBuffer buffer, int value)
+        {
+            do
+            {
+                int digit = value % 128;
+                value /= 128;
+                if (value > 0)
+                {
+                    digit |= 0x80;
+                }
+                buffer.WriteBigEndian((byte)digit);
+            }
+            while (value > 0);
         }
 
         static int CalculateFirstByteOfFixedHeader(Packet packet)
@@ -143,19 +177,19 @@ namespace SocketsSample
             {
                 case Signatures.PubAck:
                     var pubAckPacket = new PubAckPacket();
-                    //DecodePacketIdVariableHeader(buffer, pubAckPacket, ref remainingLength);
+                    DecodePacketIdVariableHeader(ref buffer, pubAckPacket);
                     return pubAckPacket;
                 case Signatures.PubRec:
                     var pubRecPacket = new PubRecPacket();
-                    // DecodePacketIdVariableHeader(buffer, pubRecPacket, ref remainingLength);
+                    DecodePacketIdVariableHeader(ref buffer, pubRecPacket);
                     return pubRecPacket;
                 case Signatures.PubRel:
                     var pubRelPacket = new PubRelPacket();
-                    // DecodePacketIdVariableHeader(buffer, pubRelPacket, ref remainingLength);
+                    DecodePacketIdVariableHeader(ref buffer, pubRelPacket);
                     return pubRelPacket;
                 case Signatures.PubComp:
                     var pubCompPacket = new PubCompPacket();
-                    // DecodePacketIdVariableHeader(buffer, pubCompPacket, ref remainingLength);
+                    DecodePacketIdVariableHeader(ref buffer, pubCompPacket);
                     return pubCompPacket;
                 case Signatures.PingReq:
                     ValidateServerPacketExpected(packetSignature);
@@ -163,13 +197,13 @@ namespace SocketsSample
                 case Signatures.Subscribe:
                     ValidateServerPacketExpected(packetSignature);
                     var subscribePacket = new SubscribePacket();
-                    // DecodePacketIdVariableHeader(buffer, subscribePacket, ref remainingLength);
-                    // DecodeSubscribePayload(buffer, subscribePacket, ref remainingLength);
+                    DecodePacketIdVariableHeader(ref buffer, subscribePacket);
+                    DecodeSubscribePayload(ref buffer, subscribePacket);
                     return subscribePacket;
                 case Signatures.Unsubscribe:
                     ValidateServerPacketExpected(packetSignature);
                     var unsubscribePacket = new UnsubscribePacket();
-                    // DecodePacketIdVariableHeader(buffer, unsubscribePacket, ref remainingLength);
+                    DecodePacketIdVariableHeader(ref buffer, unsubscribePacket);
                     // DecodeUnsubscribePayload(buffer, unsubscribePacket, ref remainingLength);
                     return unsubscribePacket;
                 case Signatures.Connect:
@@ -188,19 +222,82 @@ namespace SocketsSample
                 case Signatures.SubAck:
                     ValidateClientPacketExpected(packetSignature);
                     var subAckPacket = new SubAckPacket();
-                    // DecodePacketIdVariableHeader(buffer, subAckPacket, ref remainingLength);
+                    DecodePacketIdVariableHeader(ref buffer, subAckPacket);
                     // DecodeSubAckPayload(buffer, subAckPacket, ref remainingLength);
                     return subAckPacket;
                 case Signatures.UnsubAck:
                     ValidateClientPacketExpected(packetSignature);
                     var unsubAckPacket = new UnsubAckPacket();
-                    // DecodePacketIdVariableHeader(buffer, unsubAckPacket, ref remainingLength);
+                    DecodePacketIdVariableHeader(ref buffer, unsubAckPacket);
                     return unsubAckPacket;
                 case Signatures.PingResp:
                     ValidateClientPacketExpected(packetSignature);
                     return PingRespPacket.Instance;
                 default:
                     throw new Exception($"First packet byte value of `{packetSignature}` is invalid.");
+            }
+        }
+
+        static void DecodePacketIdVariableHeader(ref ReadableBuffer buffer, PacketWithId packet)
+        {
+            int packetId = packet.PacketId = DecodeUnsignedShort(ref buffer);
+            if (packetId == 0)
+            {
+                throw new Exception("[MQTT-2.3.1-1]");
+            }
+        }
+
+        static void DecodeSubscribePayload(ref ReadableBuffer buffer, SubscribePacket packet)
+        {
+            var subscribeTopics = new List<SubscriptionRequest>();
+            while (buffer.Length > 0)
+            {
+                string topicFilter = DecodeString(ref buffer);
+                ValidateTopicFilter(topicFilter);
+
+                int qos = buffer.Peek();
+                if (qos >= (int)QualityOfService.Reserved)
+                {
+                    throw new Exception($"[MQTT-3.8.3-4]. Invalid QoS value: {qos}.");
+                }
+                buffer = buffer.Slice(1);
+                subscribeTopics.Add(new SubscriptionRequest(topicFilter, (QualityOfService)qos));
+            }
+
+            if (subscribeTopics.Count == 0)
+            {
+                throw new Exception("[MQTT-3.8.3-3]");
+            }
+
+            packet.Requests = subscribeTopics;
+        }
+
+        static void ValidateTopicFilter(string topicFilter)
+        {
+            int length = topicFilter.Length;
+            if (length == 0)
+            {
+                throw new Exception("[MQTT-4.7.3-1]");
+            }
+
+            for (int i = 0; i < length; i++)
+            {
+                char c = topicFilter[i];
+                switch (c)
+                {
+                    case '+':
+                        if ((i > 0 && topicFilter[i - 1] != '/') || (i < length - 1 && topicFilter[i + 1] != '/'))
+                        {
+                            throw new Exception($"[MQTT-4.7.1-3]. Invalid topic filter: {topicFilter}");
+                        }
+                        break;
+                    case '#':
+                        if (i < length - 1 || (i > 0 && topicFilter[i - 1] != '/'))
+                        {
+                            throw new Exception($"[MQTT-4.7.1-2]. Invalid topic filter: {topicFilter}");
+                        }
+                        break;
+                }
             }
         }
 
