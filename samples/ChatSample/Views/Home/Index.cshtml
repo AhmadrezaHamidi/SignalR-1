@@ -7,17 +7,38 @@
         document.addEventListener('DOMContentLoaded', () => {
             let connection = new RpcConnection(`http://${document.location.host}/chat`, 'formatType=json&format=text');
 
-            connection.on('Send', function (message) {
+            connection.on('Send', function (userName, message) {
                 var child = document.createElement('li');
-                child.innerText = message;
+                child.className = "message";
+                var data = "<strong>" + userName + "</strong>:" + message;
+                child.innerHTML = data;
                 document.getElementById('messages').appendChild(child);
+            });
+
+            connection.on('UserStatus', function (userName, status) {
+                var child = document.createElement('li');
+                child.id = userName;
+                var glyph = document.createElement('span');
+                glyph.className = "glyphicon glyphicon-asterisk " + status;
+                child.appendChild(glyph);
+                var text = document.createElement('span');
+                text.innerText = userName;
+                child.appendChild(text);
+                var oldUserStatus = document.getElementById(userName);
+
+                if (oldUserStatus)
+                {
+                    oldUserStatus.parentNode.removeChild(oldUserStatus);
+                }
+
+                document.getElementById('users').appendChild(child);
             });
 
             connection.start();
 
             document.getElementById('sendmessage').addEventListener('submit', event => {
                 let data = document.getElementById('new-message').value;
-
+                document.getElementById('new-message').value = "";
                 connection.invoke('ChatSample.Hubs.Chat.Send', data, 'json').catch(err => {
                     var child = document.createElement('li');
                     child.style.color = 'red';
@@ -27,16 +48,41 @@
 
                 event.preventDefault();
             });
+
+
         });
+
+
 </script>
 
-<div id="chat-area">
-    <ul id="messages"></ul>
-    <ul id="users"></ul>
+<div id="chat-area" class="container">
+    <table>
+        <col width="80%">
+        <col width="30%">
+        <tr>
+            <td>Messages</td>
+            <td>Users</td>
+        </tr>
+        <tr>
+            <td>
+                <div class="well well-lg message-container">
+                    <ul id="messages"></ul>
+                </div>
+            </td>
+            <td style="vertical-align:top;">
+                <div class="panel panel-default">
+                    <div class="panel-body">
+                        <ul id="users"></ul>
+                    </div>
+                </div>
+            </td>
+        </tr>
+    </table>
+    
     <div class="clear">
     </div>
     <form id="sendmessage" action="#">
-        <input type="text" id="new-message" />
-        <input type="submit" id="send" value="Send" class="send" />
+        <input type="text" id="new-message" class="form-control" required/>
+        <Button type="submit" id="send" value="" class="btn btn-primary"><span class="glyphicon glyphicon-send"></span></Button>
     </form>
 </div>

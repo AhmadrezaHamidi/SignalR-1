@@ -14,24 +14,24 @@ namespace ChatSample.Hubs
     [Authorize]
     public class Chat : Hub
     {
-        public override Task OnConnectedAsync()
+        public async override Task OnConnectedAsync()
         {
             if (!Context.User.Identity.IsAuthenticated)
             {
                 Context.Connection.Channel.Dispose();
             }
 
-            return Task.CompletedTask;
+            await Clients.All.InvokeAsync("UserStatus", $"{Context.User.Identity.Name}", "online");
         }
 
-        public override Task OnDisconnectedAsync()
+        public async override Task OnDisconnectedAsync()
         {
-            return Task.CompletedTask;
+            await Clients.All.InvokeAsync("UserStatus", $"{Context.User.Identity.Name}", "offline");
         }
 
         public async Task Send(string message)
         {
-            await Clients.All.InvokeAsync("Send", $"{Context.User.Identity.Name}: {message}");
+            await Clients.All.InvokeAsync("Send", $"{Context.User.Identity.Name}", message);
         }
     }
 }
