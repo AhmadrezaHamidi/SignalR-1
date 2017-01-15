@@ -8,6 +8,8 @@ using System.IO.Pipelines;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Sockets;
 using Microsoft.Extensions.Internal;
+using System.Threading;
+using System.Collections.Concurrent;
 
 namespace Microsoft.AspNetCore.SignalR
 {
@@ -80,19 +82,28 @@ namespace Microsoft.AspNetCore.SignalR
             return Task.WhenAll(tasks);
         }
 
-        public override Task InvokeConnectionAsync(string connectionId, string methodName, object[] args)
+        public override async Task<object> InvokeConnectionAsync(string connectionId, string methodName, object[] args)
         {
             var connection = _connections[connectionId];
+            var tcs = new TaskCompletionSource<object>();
+
+            var invocationList = connection.Metadata.GetOrAdd("invocations", _ => new ConnectionInvocationList());
+
+            string id;
+            var task = invocationList.GetNextInvocationId(out id);
 
             var invocationAdapter = _registry.GetInvocationAdapter(connection.Metadata.Get<string>("formatType"));
 
             var message = new InvocationDescriptor
             {
+                Id = id,
                 Method = methodName,
                 Arguments = args
             };
 
-            return WriteAsync(connection, invocationAdapter, message);
+            await WriteAsync(connection, invocationAdapter, message);
+
+            return await task;
         }
 
         public override Task InvokeGroupAsync(string groupName, string methodName, object[] args)
@@ -137,6 +148,36 @@ namespace Microsoft.AspNetCore.SignalR
                 if (connection.Transport.Output.TryWrite(message))
                 {
                     break;
+                }
+            }
+        }
+    }
+
+    public class ConnectionInvocationList
+    {
+        private int _id;
+        private ConcurrentDictionary<string, TaskCompletionSource<object>> _invocations = new ConcurrentDictionary<string, TaskCompletionSource<object>>();
+
+        public Task<object> GetNextInvocationId(out string id)
+        {
+            id = Interlocked.Increment(ref _id).ToString();
+            var tcs = new TaskCompletionSource<object>();
+            _invocations[id] = tcs;
+            return tcs.Task;
+        }
+
+        public void Complete(InvocationResultDescriptor descriptor)
+        {
+            TaskCompletionSource<object> tcs;
+            if (_invocations.TryRemove(descriptor.Id, out tcs))
+            {
+                if (descriptor.Error != null)
+                {
+                    tcs.TrySetResult(new Exception(descriptor.Error));
+                }
+                else
+                {
+                    tcs.TrySetResult(descriptor.Result);
                 }
             }
         }

@@ -69,7 +69,7 @@ namespace Microsoft.AspNetCore.SignalR.Redis
             return PublishAsync(typeof(THub).FullName, message);
         }
 
-        public override Task InvokeConnectionAsync(string connectionId, string methodName, object[] args)
+        public override async Task<object> InvokeConnectionAsync(string connectionId, string methodName, object[] args)
         {
             var message = new InvocationDescriptor
             {
@@ -77,7 +77,8 @@ namespace Microsoft.AspNetCore.SignalR.Redis
                 Arguments = args
             };
 
-            return PublishAsync(typeof(THub).FullName + "." + connectionId, message);
+            await PublishAsync(typeof(THub).FullName + "." + connectionId, message);
+            return null;
         }
 
         public override Task InvokeGroupAsync(string groupName, string methodName, object[] args)

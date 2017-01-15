@@ -14,7 +14,7 @@ namespace Microsoft.AspNetCore.SignalR
 
         public abstract Task InvokeAllAsync(string methodName, object[] args);
 
-        public abstract Task InvokeConnectionAsync(string connectionId, string methodName, object[] args);
+        public abstract Task<object> InvokeConnectionAsync(string connectionId, string methodName, object[] args);
 
         public abstract Task InvokeGroupAsync(string groupName, string methodName, object[] args);
 

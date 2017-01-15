@@ -17,9 +17,10 @@ namespace Microsoft.AspNetCore.SignalR
             _userId = userId;
         }
 
-        public Task InvokeAsync(string method, params object[] args)
+        public async Task<object> InvokeAsync(string method, params object[] args)
         {
-            return _lifetimeManager.InvokeUserAsync(_userId, method, args);
+            await _lifetimeManager.InvokeUserAsync(_userId, method, args);
+            return null;
         }
     }
 
@@ -34,9 +35,10 @@ namespace Microsoft.AspNetCore.SignalR
             _groupName = groupName;
         }
 
-        public Task InvokeAsync(string method, params object[] args)
+        public async Task<object> InvokeAsync(string method, params object[] args)
         {
-            return _lifetimeManager.InvokeGroupAsync(_groupName, method, args);
+            await _lifetimeManager.InvokeGroupAsync(_groupName, method, args);
+            return null;
         }
     }
 
@@ -49,9 +51,10 @@ namespace Microsoft.AspNetCore.SignalR
             _lifetimeManager = lifetimeManager;
         }
 
-        public Task InvokeAsync(string method, params object[] args)
+        public async Task<object> InvokeAsync(string method, params object[] args)
         {
-            return _lifetimeManager.InvokeAllAsync(method, args);
+            await _lifetimeManager.InvokeAllAsync(method, args);
+            return null;
         }
     }
 
@@ -67,7 +70,7 @@ namespace Microsoft.AspNetCore.SignalR
             _connectionId = connectionId;
         }
 
-        public Task InvokeAsync(string method, params object[] args)
+        public Task<object> InvokeAsync(string method, params object[] args)
         {
             return _lifetimeManager.InvokeConnectionAsync(_connectionId, method, args);
         }

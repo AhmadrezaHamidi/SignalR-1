@@ -31,6 +31,7 @@ namespace SocketsSample
 
             services.AddSingleton<MessagesEndPoint>();
             services.AddSingleton<ProtobufSerializer>();
+            services.AddSingleton<IHostedService, ClockService>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -48,6 +49,7 @@ namespace SocketsSample
             app.UseSignalR(routes =>
             {
                 routes.MapHub<Chat>("/hubs");
+                routes.MapHub<Clock>("/clock");
             });
 
             app.UseSockets(routes =>

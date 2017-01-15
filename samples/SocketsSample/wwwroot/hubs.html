@@ -113,6 +113,11 @@ connection.on('Send', msg => {
     addLine(msg);
 });
 
+
+connection.on('Add', (a, b) => {
+    return a + b;
+});
+
 connection.connectionClosed = e => {
     if (e) {
         addLine('Connection closed with error: ' + e, 'red');

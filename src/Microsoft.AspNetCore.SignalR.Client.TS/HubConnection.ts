@@ -51,14 +51,23 @@ export class HubConnection {
         else {
             let invocation: InvocationDescriptor = descriptor;
             let method = this.methods[invocation.Method];
+
             if (method != null) {
                 // TODO: bind? args?
-                method.apply(this, invocation.Arguments);
+                let result = method.apply(this, invocation.Arguments);
+                if (invocation.Id) {
+                    let invocationResultDescriptor: InvocationResultDescriptor = {
+                        "Id": invocation.Id.toString(),
+                        "Result": result,
+                        "Error": null
+                    };
+                    this.connection.send(JSON.stringify(invocationResultDescriptor));
+                }
             }
         }
     }
 
-    start(transportName? :string): Promise<void> {
+    start(transportName?: string): Promise<void> {
         return this.connection.start(transportName);
     }
 
