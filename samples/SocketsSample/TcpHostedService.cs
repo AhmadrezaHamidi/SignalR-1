@@ -14,14 +14,14 @@ using System.Threading.Tasks.Channels;
 
 namespace SocketsSample
 {
-    public class TcpHostedService : IHostedService
+    public class TcpHostedService<TEndPoint> : IHostedService where TEndPoint : Microsoft.AspNetCore.Sockets.EndPoint
     {
         private readonly TcpListener _listener = new TcpListener(IPAddress.Any, 5002);
         private Task _loop;
-        private readonly ILogger<TcpHostedService> _logger;
-        private readonly MessagesEndPoint _endPoint;
+        private readonly ILogger<TcpHostedService<TEndPoint>> _logger;
+        private readonly TEndPoint _endPoint;
 
-        public TcpHostedService(ILogger<TcpHostedService> logger, MessagesEndPoint endPoint)
+        public TcpHostedService(ILogger<TcpHostedService<TEndPoint>> logger, TEndPoint endPoint)
         {
             _logger = logger;
             _endPoint = endPoint;
@@ -52,7 +52,7 @@ namespace SocketsSample
             }
             catch (Exception)
             {
-                
+
             }
         }
 
@@ -76,6 +76,8 @@ namespace SocketsSample
                 client.Close();
             }
 
+            connection.Dispose();
+
             await Task.WhenAll(reading, writing, applicationTask);
         }
 
@@ -89,6 +91,11 @@ namespace SocketsSample
                     int read = await ns.ReadAsync(buffer, 0, buffer.Length);
 
                     _logger.LogDebug("Read {bytes} bytes from the TCP connection", read);
+
+                    if (read == 0)
+                    {
+                        break;
+                    }
 
                     var payload = ReadableBuffer.Create(buffer, 0, read).Preserve();
                     var message = new Message(payload, Format.Text, endOfMessage: true);

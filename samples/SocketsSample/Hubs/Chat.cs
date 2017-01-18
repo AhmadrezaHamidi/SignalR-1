@@ -21,9 +21,13 @@ namespace SocketsSample.Hubs
 
         public async Task Send(string message)
         {
-            // Clients.All.InvokeAsync("Send", $"{Context.ConnectionId}: {message}");
-            var result = await Clients.Client(Context.ConnectionId).InvokeAsync("Add", 1, 4);
-            await Clients.All.InvokeAsync("Send", result);
+            await Clients.All.InvokeAsync("Send", $"{Context.ConnectionId}: {message}");
+        }
+
+        public async Task Add(int a, int b)
+        {
+            var result = await Clients.Client(Context.ConnectionId).InvokeAsync("Add", a, b);
+            await Clients.All.InvokeAsync("Send", $"Added {a} + {b} on client {Context.ConnectionId} = {result}");
         }
 
         public Task SendToGroup(string groupName, string message)
