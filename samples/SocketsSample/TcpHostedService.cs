@@ -1,16 +1,13 @@
-﻿using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Sockets;
-using Microsoft.AspNetCore.Sockets.Internal;
-using Microsoft.Extensions.Logging;
-using SocketsSample.EndPoints;
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.IO.Pipelines;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Channels;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Sockets;
+using Microsoft.AspNetCore.Sockets.Internal;
+using Microsoft.Extensions.Logging;
 
 namespace SocketsSample
 {
@@ -146,7 +143,7 @@ namespace SocketsSample
 
             _loop.Wait();
 
-            _logger.LogDebug("Application unwound");
+            _logger.LogDebug("Listener ended");
         }
     }
 }
