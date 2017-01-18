@@ -56,12 +56,27 @@ export class HubConnection {
                 // TODO: bind? args?
                 let result = method.apply(this, invocation.Arguments);
                 if (invocation.Id) {
-                    let invocationResultDescriptor: InvocationResultDescriptor = {
-                        "Id": invocation.Id.toString(),
-                        "Result": result,
-                        "Error": null
-                    };
-                    this.connection.send(JSON.stringify(invocationResultDescriptor));
+                    if (result && result.constructor && result.constructor.name === "Promise")
+                    {  
+                        let promise: Promise<void> = result;
+                        
+                        promise.then(() => {
+                            let invocationResultDescriptor: InvocationResultDescriptor = {
+                                "Id": invocation.Id.toString(),
+                                "Result": null,
+                                "Error": null
+                            };
+                            this.connection.send(JSON.stringify(invocationResultDescriptor));
+                        });
+                    }
+                    else {
+                        let invocationResultDescriptor: InvocationResultDescriptor = {
+                            "Id": invocation.Id.toString(),
+                            "Result": result || null,
+                            "Error": null
+                        };
+                        this.connection.send(JSON.stringify(invocationResultDescriptor));
+                    }
                 }
             }
         }

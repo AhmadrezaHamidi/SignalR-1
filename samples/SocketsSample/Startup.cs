@@ -29,6 +29,7 @@ namespace SocketsSample
                     });
             // .AddRedis();
 
+            services.AddSingleton<GameLogic>();
             services.AddSingleton<MessagesEndPoint>();
             services.AddSingleton<ProtobufSerializer>();
             services.AddSingleton<IHostedService, ClockService>();
@@ -51,6 +52,7 @@ namespace SocketsSample
             {
                 routes.MapHub<Chat>("/hubs");
                 routes.MapHub<Clock>("/clock");
+                routes.MapHub<Game>("/game");
             });
 
             app.UseSockets(routes =>

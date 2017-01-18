@@ -1,0 +1,103 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title></title>
+</head>
+<body>
+    <h1 id="head1"></h1>
+
+    <input type="button" id="game" value="Click me!" disabled="disabled" />
+
+    <ul id="messages"></ul>
+</body>
+</html>
+<script src="lib/signalr-client/signalr-client.js"></script>
+<script>
+var isConnected = false;
+function getParameterByName(name, url) {
+    if (!url) {
+        url = window.location.href;
+    }
+    name = name.replace(/[\[\]]/g, "\\$&");
+    var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+        results = regex.exec(url);
+    if (!results) return null;
+    if (!results[2]) return '';
+    return decodeURIComponent(results[2].replace(/\+/g, " "));
+}
+
+function click(id, callback) {
+    document.getElementById(id).addEventListener('click', event => {
+        callback(event);
+        event.preventDefault();
+    });
+}
+
+function addLine(line, color) {
+    var child = document.createElement('li');
+    if (color) {
+        child.style.color = color;
+    }
+    child.innerText = line;
+    document.getElementById('messages').appendChild(child);
+}
+
+function invoke(connection, method, ...args) {
+    if (!isConnected) {
+        return;
+    }
+    var argsArray = Array.prototype.slice.call(arguments);
+    connection.invoke.apply(connection, argsArray.slice(1))
+            .then(result => {
+                console.log("invocation completed successfully: " + (result === null ? '(null)' : result));
+
+                if (result) {
+                    addLine(result);
+                }
+            })
+            .catch(err => {
+                addLine(err, 'red');
+            });
+}
+
+let transport = getParameterByName('transport') || 'webSockets';
+
+document.getElementById('head1').innerHTML = transport;
+
+let connection = new signalR.HubConnection(`http://${document.location.host}/game`, 'formatType=json&format=text');
+
+var currentQuestion = {
+    resolve: function () { },
+    reject: function() { }
+};
+
+connection.on('Ask', (a, b) => {
+    document.getElementById('game').removeAttribute('disabled');
+    return new Promise(function (resolve, reject) {
+        currentQuestion.resolve = resolve;
+        currentQuestion.reject = reject;
+    });
+});
+
+connection.on('Send', data => {
+    alert(data);
+});
+
+
+connection.connectionClosed = e => {
+    if (e) {
+        addLine('Connection closed with error: ' + e, 'red');
+    }
+    else {
+        addLine('Disconnected', 'green');
+    }
+}
+
+click('game', event => {
+    currentQuestion.resolve();
+});
+
+connection.start(transport);
+
+</script>
