@@ -131,6 +131,10 @@ namespace Microsoft.AspNetCore.SignalR
 
         public override Task OnDisconnectedAsync(Connection connection)
         {
+            var invocationList = connection.Metadata.Get<ConnectionInvocationList>("invocations");
+
+            invocationList?.CancelAll();
+
             _connections.Remove(connection);
             return TaskCache.CompletedTask;
         }
@@ -179,6 +183,14 @@ namespace Microsoft.AspNetCore.SignalR
                 {
                     tcs.TrySetResult(descriptor.Result);
                 }
+            }
+        }
+
+        public void CancelAll()
+        {
+            foreach (var invocation in _invocations)
+            {
+                invocation.Value.TrySetCanceled();
             }
         }
     }

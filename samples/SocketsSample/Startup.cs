@@ -32,6 +32,7 @@ namespace SocketsSample
             services.AddSingleton<MessagesEndPoint>();
             services.AddSingleton<ProtobufSerializer>();
             services.AddSingleton<IHostedService, ClockService>();
+            services.AddSingleton<IHostedService, TcpHostedService>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
