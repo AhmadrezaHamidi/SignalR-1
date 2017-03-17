@@ -13,7 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Microsoft.AspNetCore.Sockets.Client
 {
-    public class Connection: IConnection
+    public class Connection : IConnection
     {
         private readonly ILoggerFactory _loggerFactory;
         private readonly ILogger _logger;
