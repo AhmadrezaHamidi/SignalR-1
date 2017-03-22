@@ -37,7 +37,7 @@ namespace Microsoft.AspNetCore.WebSockets.Internal.ConformanceTest.Autobahn
             Spec = baseSpec;
         }
 
-        public async Task<AutobahnResult> Run()
+        public async Task<AutobahnResult> Run(CancellationToken cancellationToken)
         {
             var specFile = Path.GetTempFileName();
             try
@@ -46,7 +46,7 @@ namespace Microsoft.AspNetCore.WebSockets.Internal.ConformanceTest.Autobahn
 
                 // Run the test (write something to the console so people know this will take a while...)
                 _logger.LogInformation("Now launching Autobahn Test Suite. This will take a while.");
-                var exitCode = await Wstest.Default.ExecAsync("-m fuzzingclient -s " + specFile);
+                var exitCode = await Wstest.Default.ExecAsync("-m fuzzingclient -s " + specFile, cancellationToken, _loggerFactory.CreateLogger("wstest"));
                 if (exitCode != 0)
                 {
                     throw new Exception("wstest failed");
@@ -60,8 +60,10 @@ namespace Microsoft.AspNetCore.WebSockets.Internal.ConformanceTest.Autobahn
                 }
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             // Parse the output.
-            var outputFile = Path.Combine(Directory.GetCurrentDirectory(), Spec.OutputDirectory, "index.json");
+            var outputFile = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", Spec.OutputDirectory, "index.json");
             using (var reader = new StreamReader(File.OpenRead(outputFile)))
             {
                 return AutobahnResult.FromReportJson(JObject.Parse(await reader.ReadToEndAsync()));
@@ -87,31 +89,31 @@ namespace Microsoft.AspNetCore.WebSockets.Internal.ConformanceTest.Autobahn
             Assert.True(failures.Length == 0, "Autobahn results did not meet expectations:" + Environment.NewLine + failures.ToString());
         }
 
-        public async Task DeployTestAndAddToSpec(ServerType server, bool ssl, Action<AutobahnExpectations> expectationConfig = null)
+        public async Task DeployTestAndAddToSpec(ServerType server, bool ssl, string environment, CancellationToken cancellationToken, Action<AutobahnExpectations> expectationConfig = null)
         {
             var port = Interlocked.Increment(ref _nextPort);
             var baseUrl = ssl ? $"https://localhost:{port}" : $"http://localhost:{port}";
             var sslNamePart = ssl ? "SSL" : "NoSSL";
-            var name = $"{server}|{sslNamePart}";
-            var logger = _loggerFactory.CreateLogger($"AutobahnTestApp:{server}:{sslNamePart}");
+            var name = $"{server}|{sslNamePart}|{environment}";
+            var logger = _loggerFactory.CreateLogger($"AutobahnTestApp:{server}:{sslNamePart}:{environment}");
 
-            var appPath = Helpers.GetApplicationPath("WebSocketsTestApp");
+            var appPath = Helpers.GetApplicationPath("AutobahnTestApp");
+            var configPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "Http.config");
             var parameters = new DeploymentParameters(appPath, server, RuntimeFlavor.CoreClr, RuntimeArchitecture.x64)
             {
                 ApplicationBaseUriHint = baseUrl,
                 ApplicationType = ApplicationType.Portable,
-                TargetFramework = "netcoreapp1.1",
-                EnvironmentName = "Development"
+                TargetFramework = "netcoreapp2.0",
+                EnvironmentName = environment,
+                SiteName = "HttpTestSite", // This is configured in the Http.config
+                ServerConfigTemplateContent = (server == ServerType.IISExpress) ? File.ReadAllText(configPath) : null,
             };
 
             var deployer = ApplicationDeployerFactory.Create(parameters, logger);
             var result = deployer.Deploy();
-            result.HostShutdownToken.ThrowIfCancellationRequested();
+            _deployers.Add(deployer);
+            cancellationToken.ThrowIfCancellationRequested();
 
-#if NET46
-            System.Net.ServicePointManager.ServerCertificateValidationCallback = (_, __, ___, ____) => true;
-            var client = new HttpClient();
-#else
             var handler = new HttpClientHandler();
             if (ssl)
             {
@@ -121,24 +123,26 @@ namespace Microsoft.AspNetCore.WebSockets.Internal.ConformanceTest.Autobahn
                 handler.ServerCertificateCustomValidationCallback = (_, __, ___, ____) => true;
             }
             var client = new HttpClient(handler);
-#endif
 
             // Make sure the server works
             var resp = await RetryHelper.RetryRequest(() =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 return client.GetAsync(result.ApplicationBaseUri);
-            }, logger, result.HostShutdownToken); // High retry count because Travis macOS is slow
+            }, logger, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, result.HostShutdownToken).Token);
             resp.EnsureSuccessStatusCode();
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Add to the current spec
             var wsUrl = result.ApplicationBaseUri.Replace("https://", "wss://").Replace("http://", "ws://");
             Spec.WithServer(name, wsUrl);
 
-            _deployers.Add(deployer);
-
-            var expectations = new AutobahnExpectations(server, ssl);
+            var expectations = new AutobahnExpectations(server, ssl, environment);
             expectationConfig?.Invoke(expectations);
             _expectations.Add(expectations);
+
+            cancellationToken.ThrowIfCancellationRequested();
         }
 
         public void Dispose()

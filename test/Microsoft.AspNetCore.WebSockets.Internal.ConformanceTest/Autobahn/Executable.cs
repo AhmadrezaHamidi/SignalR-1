@@ -5,7 +5,9 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.WebSockets.Internal.ConformanceTest.Autobahn
 {
@@ -33,7 +35,7 @@ namespace Microsoft.AspNetCore.WebSockets.Internal.ConformanceTest.Autobahn
             return null;
         }
 
-        public Task<int> ExecAsync(string args)
+        public async Task<int> ExecAsync(string args, CancellationToken cancellationToken, ILogger logger)
         {
             var process = new Process()
             {
@@ -42,16 +44,43 @@ namespace Microsoft.AspNetCore.WebSockets.Internal.ConformanceTest.Autobahn
                     FileName = _path,
                     Arguments = args,
                     UseShellExecute = false,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true
                 },
                 EnableRaisingEvents = true
             };
             var tcs = new TaskCompletionSource<int>();
 
-            process.Exited += (_, __) => tcs.TrySetResult(process.ExitCode);
+            using (cancellationToken.Register(() => Cancel(process, tcs)))
+            {
+                process.Exited += (_, __) => tcs.TrySetResult(process.ExitCode);
+                process.OutputDataReceived += (_, a) => LogIfNotNull(logger.LogInformation, "stdout: {0}", a.Data);
+                process.ErrorDataReceived += (_, a) => LogIfNotNull(logger.LogError, "stderr: {0}", a.Data);
 
-            process.Start();
+                process.Start();
 
-            return tcs.Task;
+                process.BeginErrorReadLine();
+                process.BeginOutputReadLine();
+
+                return await tcs.Task;
+            }
+        }
+
+        private void LogIfNotNull(Action<string, object[]> logger, string message, string data)
+        {
+            if (!string.IsNullOrEmpty(data))
+            {
+                logger(message, new[] { data });
+            }
+        }
+
+        private static void Cancel(Process process, TaskCompletionSource<int> tcs)
+        {
+            if (process != null && !process.HasExited)
+            {
+                process.Kill();
+            }
+            tcs.TrySetCanceled();
         }
     }
 }

@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Server.IntegrationTesting;
 using Microsoft.AspNetCore.Testing.xunit;
@@ -54,13 +55,16 @@ namespace Microsoft.AspNetCore.WebSockets.Internal.ConformanceTest
                 _output.WriteLine("Logging enabled");
             }
 
+            var cts = new CancellationTokenSource();
+            cts.CancelAfter(TimeSpan.FromMinutes(5));
+
             AutobahnResult result;
             using (var tester = new AutobahnTester(loggerFactory, spec))
             {
-                await tester.DeployTestAndAddToSpec(ServerType.Kestrel, ssl: false, expectationConfig: expect => expect
+                await tester.DeployTestAndAddToSpec(ServerType.Kestrel, ssl: false, environment: "ManagedSockets", cancellationToken: cts.Token, expectationConfig: expect => expect
                     .NonStrict("6.4.3", "6.4.4"));
 
-                result = await tester.Run();
+                result = await tester.Run(cts.Token);
                 tester.Verify(result);
             }
         }

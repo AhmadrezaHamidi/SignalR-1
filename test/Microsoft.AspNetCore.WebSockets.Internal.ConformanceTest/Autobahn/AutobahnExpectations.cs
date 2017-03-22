@@ -13,11 +13,13 @@ namespace Microsoft.AspNetCore.WebSockets.Internal.ConformanceTest.Autobahn
         private Dictionary<string, Expectation> _expectations = new Dictionary<string, Expectation>();
         public bool Ssl { get; }
         public ServerType Server { get; }
+        public string Environment { get; }
 
-        public AutobahnExpectations(ServerType server, bool ssl)
+        public AutobahnExpectations(ServerType server, bool ssl, string environment)
         {
             Server = server;
             Ssl = ssl;
+            Environment = environment;
         }
 
         public AutobahnExpectations Fail(params string[] caseSpecs) => Expect(Expectation.Fail, caseSpecs);
