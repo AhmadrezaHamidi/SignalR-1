@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Reactive.Linq" Version="3.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Microsoft.AspNetCore.SignalR.Common\Microsoft.AspNetCore.SignalR.Common.csproj" />
     <ProjectReference Include="..\Microsoft.AspNetCore.Sockets.Client\Microsoft.AspNetCore.Sockets.Client.csproj" />
   </ItemGroup>

@@ -7,7 +7,7 @@ namespace Microsoft.AspNetCore.SignalR
 {
     public interface IInvocationBinder
     {
-        Type GetReturnType(string invocationId);
+        Type GetReturnType(long invocationId);
         Type[] GetParameterTypes(string methodName);
     }
 }

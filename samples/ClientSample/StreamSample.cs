@@ -1,8 +1,7 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
-// Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
-
-using System;
+﻿using System;
+using System.Linq;
 using System.Net.Http;
+using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
@@ -12,18 +11,26 @@ using Microsoft.Extensions.Logging;
 
 namespace ClientSample
 {
-    internal class HubSample
+    public class StreamSample
     {
         public static async Task MainAsync(string[] args)
         {
-            var baseUrl = "http://localhost:5000/hubs";
+            if(args.Contains("--debug"))
+            {
+                args = args.Where(a => a != "--debug").ToArray();
+                Console.WriteLine($"Waiting for debugger. Process ID: {System.Diagnostics.Process.GetCurrentProcess().Id}");
+                Console.WriteLine("Press ENTER to continue...");
+                Console.ReadLine();
+            }
+
+            var baseUrl = "http://localhost:5000/stockPrices";
             if (args.Length > 0)
             {
                 baseUrl = args[0];
             }
 
             var loggerFactory = new LoggerFactory();
-            loggerFactory.AddConsole(LogLevel.Debug);
+            //loggerFactory.AddConsole(LogLevel.Debug);
             var logger = loggerFactory.CreateLogger<Program>();
 
             using (var httpClient = new HttpClient(new LoggingMessageHandler(loggerFactory, new HttpClientHandler())))
@@ -44,25 +51,40 @@ namespace ClientSample
                         cts.Cancel();
                     };
 
-                    // Set up handler
-                    connection.On("Send", new[] { typeof(string) }, a =>
-                    {
-                        var message = (string)a[0];
-                        Console.WriteLine("RECEIVED: " + message);
-                    });
+                    // Call the method on the server
+                    var result = await connection.Invoke<IObservable<string>>("SubscribeToStock", "MSFT");
 
-                    while (!cts.Token.IsCancellationRequested)
-                    {
-                        var line = Console.ReadLine();
-                        logger.LogInformation("Sending: {0}", line);
-
-                        await connection.Invoke<object>("Send", line);
-                    }
+                    await result.ForEachAsync((s) => Console.WriteLine(s), cts.Token);
                 }
                 finally
                 {
                     await connection.DisposeAsync();
                 }
+            }
+        }
+
+        private class TestObserver : IObserver<string>
+        {
+            private TaskCompletionSource<object> _tcs;
+
+            public TestObserver(TaskCompletionSource<object> tcs)
+            {
+                _tcs = tcs;
+            }
+
+            public void OnCompleted()
+            {
+                _tcs.TrySetResult(null);
+            }
+
+            public void OnError(Exception error)
+            {
+                _tcs.TrySetException(error);
+            }
+
+            public void OnNext(string value)
+            {
+                Console.WriteLine("Received: " + value);
             }
         }
     }

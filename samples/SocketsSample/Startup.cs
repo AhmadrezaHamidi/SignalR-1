@@ -1,14 +1,12 @@
-// Copyright (c) .NET Foundation. All rights reserved.
+﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SocketsSample.EndPoints;
 using SocketsSample.Hubs;
-using SocketsSample.Protobuf;
 
 namespace SocketsSample
 {
@@ -18,15 +16,15 @@ namespace SocketsSample
         // For more information on how to configure your application, visit http://go.microsoft.com/fwlink/?LinkID=398940
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddSingleton<ProtobufInvocationAdapter>();
-            services.AddSingleton<LineInvocationAdapter>();
+            //services.AddSingleton<ProtobufInvocationAdapter>();
+            //services.AddSingleton<LineInvocationAdapter>();
 
             services.AddSockets();
 
             services.AddSignalR(options =>
                     {
-                        options.RegisterInvocationAdapter<ProtobufInvocationAdapter>("protobuf");
-                        options.RegisterInvocationAdapter<LineInvocationAdapter>("line");
+                        //options.RegisterHubProtocol<ProtobufInvocationAdapter>("protobuf");
+                        //options.RegisterHubProtocol<LineInvocationAdapter>("line");
                     });
             // .AddRedis();
 
@@ -50,6 +48,7 @@ namespace SocketsSample
             app.UseSignalR(routes =>
             {
                 routes.MapHub<Chat>("/hubs");
+                routes.MapHub<StockPrices>("/stockPrices");
             });
 
             app.UseSockets(routes =>

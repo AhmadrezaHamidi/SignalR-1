@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR.Protocol;
 using Microsoft.AspNetCore.Sockets;
 using Microsoft.Extensions.Internal;
 using Microsoft.Extensions.Logging;
@@ -23,13 +24,13 @@ namespace Microsoft.AspNetCore.SignalR.Redis
         private readonly ConnectionList _connections = new ConnectionList();
         // TODO: Investigate "memory leak" entries never get removed
         private readonly ConcurrentDictionary<string, GroupData> _groups = new ConcurrentDictionary<string, GroupData>();
-        private readonly InvocationAdapterRegistry _registry;
+        private readonly HubProtocolRegistry _registry;
         private readonly ConnectionMultiplexer _redisServerConnection;
         private readonly ISubscriber _bus;
         private readonly ILoggerFactory _loggerFactory;
         private readonly RedisOptions _options;
 
-        public RedisHubLifetimeManager(InvocationAdapterRegistry registry,
+        public RedisHubLifetimeManager(HubProtocolRegistry registry,
                                        ILoggerFactory loggerFactory,
                                        IOptions<RedisOptions> options)
         {
@@ -60,57 +61,42 @@ namespace Microsoft.AspNetCore.SignalR.Redis
 
         public override Task InvokeAllAsync(string methodName, object[] args)
         {
-            var message = new InvocationDescriptor
-            {
-                Method = methodName,
-                Arguments = args
-            };
+            var message = new InvocationMessage(invocationId: 0, target: methodName, arguments: args);
 
             return PublishAsync(typeof(THub).FullName, message);
         }
 
         public override Task InvokeConnectionAsync(string connectionId, string methodName, object[] args)
         {
-            var message = new InvocationDescriptor
-            {
-                Method = methodName,
-                Arguments = args
-            };
+            var message = new InvocationMessage(invocationId: 0, target: methodName, arguments: args);
 
             return PublishAsync(typeof(THub).FullName + "." + connectionId, message);
         }
 
         public override Task InvokeGroupAsync(string groupName, string methodName, object[] args)
         {
-            var message = new InvocationDescriptor
-            {
-                Method = methodName,
-                Arguments = args
-            };
+            var message = new InvocationMessage(invocationId: 0, target: methodName, arguments: args);
 
             return PublishAsync(typeof(THub).FullName + ".group." + groupName, message);
         }
 
         public override Task InvokeUserAsync(string userId, string methodName, object[] args)
         {
-            var message = new InvocationDescriptor
-            {
-                Method = methodName,
-                Arguments = args
-            };
+            var message = new InvocationMessage(invocationId: 0, target: methodName, arguments: args);
 
             return PublishAsync(typeof(THub).FullName + ".user." + userId, message);
         }
 
-        private async Task PublishAsync(string channel, InvocationDescriptor message)
+        private async Task PublishAsync(string channel, HubMessage message)
         {
             // TODO: What format??
-            var invocationAdapter = _registry.GetInvocationAdapter("json");
+            var invocationAdapter = _registry.GetProtocol("json");
 
             // BAD
             using (var ms = new MemoryStream())
             {
-                await invocationAdapter.WriteMessageAsync(message, ms);
+                invocationAdapter.WriteMessage(message, ms);
+                ms.Flush();
 
                 await _bus.PublishAsync(channel, ms.ToArray());
             }

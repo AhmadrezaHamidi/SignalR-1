@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace Microsoft.AspNetCore.SignalR.Tests.Common
@@ -17,6 +18,12 @@ namespace Microsoft.AspNetCore.SignalR.Tests.Common
 
         public static async Task OrTimeout(this Task task, TimeSpan timeout)
         {
+            if(Debugger.IsAttached)
+            {
+                await task;
+                return;
+            }
+
             var completed = await Task.WhenAny(task, Task.Delay(timeout));
             if (completed != task)
             {
@@ -33,6 +40,11 @@ namespace Microsoft.AspNetCore.SignalR.Tests.Common
 
         public static async Task<T> OrTimeout<T>(this Task<T> task, TimeSpan timeout)
         {
+            if(Debugger.IsAttached)
+            {
+                return await task;
+            }
+
             var completed = await Task.WhenAny(task, Task.Delay(timeout));
             if (completed != task)
             {

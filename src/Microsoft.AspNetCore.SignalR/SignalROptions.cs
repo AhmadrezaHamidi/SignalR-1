@@ -1,10 +1,9 @@
-// Copyright (c) .NET Foundation. All rights reserved.
+﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR.Protocol;
 
 namespace Microsoft.AspNetCore.SignalR
 {
@@ -12,9 +11,9 @@ namespace Microsoft.AspNetCore.SignalR
     {
         internal readonly Dictionary<string, Type> _invocationMappings = new Dictionary<string, Type>();
 
-        public void RegisterInvocationAdapter<TInvocationAdapter>(string format) where TInvocationAdapter : IInvocationAdapter
+        public void RegisterHubProtocol<THubProtocol>(string format) where THubProtocol : IHubProtocol
         {
-            _invocationMappings[format] = typeof(TInvocationAdapter);
+            _invocationMappings[format] = typeof(THubProtocol);
         }
     }
 }

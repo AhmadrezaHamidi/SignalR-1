@@ -7,6 +7,7 @@ using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Channels;
+using Microsoft.AspNetCore.SignalR.Protocol;
 using Microsoft.AspNetCore.Sockets;
 using Microsoft.AspNetCore.Sockets.Internal;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,7 +17,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
     public class TestClient : IDisposable
     {
         private static int _id;
-        private IInvocationAdapter _adapter;
+        private IHubProtocol _protocol;
         private CancellationTokenSource _cts;
         private TestBinder _binder;
 
@@ -37,39 +38,43 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             Connection.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.Name, Interlocked.Increment(ref _id).ToString()) }));
             Connection.Metadata["ConnectedTask"] = new TaskCompletionSource<bool>();
 
-            var invocationAdapter = serviceProvider.GetService<InvocationAdapterRegistry>();
-            _adapter = invocationAdapter.GetInvocationAdapter(format);
+            _protocol = serviceProvider.GetService<HubProtocolRegistry>().GetProtocol(format);
 
             _binder = new TestBinder();
 
             _cts = new CancellationTokenSource();
         }
 
-        public async Task<T> Invoke<T>(string methodName, params object[] args) where T : InvocationMessage
+        public async Task<ResultMessage> InvokeAndWaitForResult(string methodName, params object[] args)
         {
             await Invoke(methodName, args);
 
-            return await Read<T>();
+            var result = await Read<ResultMessage>();
+
+            await Read<CompletionMessage>();
+
+            return result;
         }
 
         public async Task Invoke(string methodName, params object[] args)
         {
-            var stream = new MemoryStream();
-            await _adapter.WriteMessageAsync(new InvocationDescriptor
+            Message message;
+            using (var stream = new MemoryStream())
             {
-                Arguments = args,
-                Method = methodName
-            },
-            stream);
+                _protocol.WriteMessage(new InvocationMessage(invocationId: 0, target: methodName, arguments: args), stream);
+                stream.Flush();
 
-            await Application.Output.WriteAsync(new Message(stream.ToArray(), MessageType.Binary, endOfMessage: true));
+                message = new Message(stream.ToArray(), MessageType.Binary, endOfMessage: true);
+            }
+
+            await Application.Output.WriteAsync(message);
         }
 
-        public async Task<T> Read<T>() where T : InvocationMessage
+        public async Task<T> Read<T>() where T : HubMessage
         {
             while (await Application.Input.WaitToReadAsync(_cts.Token))
             {
-                var value = await TryRead<T>();
+                var value = TryRead<T>();
 
                 if (value != null)
                 {
@@ -80,13 +85,25 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             return null;
         }
 
-        public async Task<T> TryRead<T>() where T : InvocationMessage
+        public T TryRead<T>() where T : HubMessage
         {
             Message message;
             if (Application.Input.TryRead(out message))
             {
-                var value = await _adapter.ReadMessageAsync(new MemoryStream(message.Payload), _binder);
-                return value as T;
+                HubMessage hubMessage;
+                using (var stream = new MemoryStream(message.Payload))
+                {
+                    hubMessage = _protocol.ParseMessage(stream, _binder);
+                }
+
+                if(hubMessage is T t)
+                {
+                    return t;
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Received unexpected message: {hubMessage}");
+                }
             }
 
             return null;
@@ -106,7 +123,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 return new[] { typeof(object) };
             }
 
-            public Type GetReturnType(string invocationId)
+            public Type GetReturnType(long invocationId)
             {
                 return typeof(object);
             }

@@ -102,7 +102,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.FunctionalTests
             using (var httpClient = _testServer.CreateClient())
             {
                 var transport = new LongPollingTransport(httpClient, loggerFactory);
-                var connection = new HubConnection(new Uri("http://test/hubs"), new JsonNetInvocationAdapter(), loggerFactory);
+                var connection = new HubConnection(new Uri("http://test/hubs"), new JsonHubProtocol(), loggerFactory);
                 try
                 {
                     await connection.StartAsync(transport, httpClient);
@@ -165,7 +165,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.FunctionalTests
                     var ex = await Assert.ThrowsAnyAsync<Exception>(
                         async () => await connection.Invoke<object>("!@#$%"));
 
-                    Assert.Equal(ex.Message, "Unknown hub method '!@#$%'");
+                    Assert.Equal("Unknown hub method '!@#$%'", ex.Message);
                 }
                 finally
                 {

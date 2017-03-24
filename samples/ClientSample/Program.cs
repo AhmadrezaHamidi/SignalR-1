@@ -6,6 +6,7 @@ namespace ClientSample
     public class Program
     {
         //public static void Main(string[] args) => HubSample.MainAsync(args).Wait();
-        public static void Main(string[] args) => RawSample.MainAsync(args).Wait();
+        //public static void Main(string[] args) => RawSample.MainAsync(args).Wait();
+        public static void Main(string[] args) => StreamSample.MainAsync(args).Wait();
     }
 }
