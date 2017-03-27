@@ -218,101 +218,45 @@ namespace Microsoft.AspNetCore.SignalR
             }
         }
 
-        private async Task Execute(Connection connection, IHubProtocol protocol, InvocationMessage invocation)
+        private Task Execute(Connection connection, IHubProtocol protocol, InvocationMessage invocation)
         {
-            string error = null;
-            object result = null;
-            HubMethodDescriptor descriptor;
-            if (_methods.TryGetValue(invocation.Target, out descriptor))
-            {
-                try
-                {
-                    result = await Invoke(descriptor, connection, invocation);
-                }
-                catch (TargetInvocationException ex)
-                {
-                    _logger.LogError(0, ex, "Failed to invoke hub method");
-                    error = ex.InnerException.Message;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(0, ex, "Failed to invoke hub method");
-                    error = ex.Message;
-                }
-            }
-            else
+            if (!_methods.TryGetValue(invocation.Target, out var descriptor))
             {
                 // If there's no method then return a failed response for this request
-                error = $"Unknown hub method '{invocation.Target}'";
+                var error = $"Unknown hub method '{invocation.Target}'";
 
-                _logger.LogError("Unknown hub method '{method}'", invocation.Target);
+                return HandleError(error, connection, protocol, invocation);
             }
 
-            if (!string.IsNullOrEmpty(error))
+
+            var methodExecutor = descriptor.MethodExecutor;
+
+            var scope = _serviceScopeFactory.CreateScope();
+            var hubActivator = scope.ServiceProvider.GetRequiredService<IHubActivator<THub, TClient>>();
+            var hub = hubActivator.Create();
+
+            InitializeHub(hub, connection);
+
+            IObservable<object> result;
+            try
             {
-                await SendMessage(connection, protocol, new ResultMessage(invocation.InvocationId, error, payload: null));
+                result = methodExecutor.Execute(hub, invocation.Arguments);
             }
-            else
+            catch (TargetInvocationException tex)
             {
-                await ProcessResult(result, invocation.InvocationId, protocol, connection);
+                return HandleError(tex.InnerException.Message, connection, protocol, invocation);
             }
 
-            await SendMessage(connection, protocol, new CompletionMessage(invocation.InvocationId));
-        }
-
-        private Task ProcessResult(object result, long invocationId, IHubProtocol protocol, Connection connection)
-        {
-            switch (result)
-            {
-                case IObservable<object> observable: return ProcessObservable(observable, invocationId, protocol, connection);
-                default: return SendMessage(connection, protocol, new ResultMessage(invocationId, error: null, payload: result));
-            }
-        }
-
-        private Task ProcessObservable(IObservable<object> observable, long invocationId, IHubProtocol protocol, Connection connection)
-        {
             var tcs = new TaskCompletionSource<object>();
-            observable.Subscribe(new HubObserver(this, tcs, invocationId, protocol, connection));
+            result.Subscribe(new HubObserver(this, hubActivator, hub, tcs, invocation.InvocationId, protocol, connection));
             return tcs.Task;
         }
 
-        private async Task<object> Invoke(HubMethodDescriptor descriptor, Connection connection, InvocationMessage invocation)
+        private async Task HandleError(string error, Connection connection, IHubProtocol protocol, InvocationMessage invocation)
         {
-            var methodExecutor = descriptor.MethodExecutor;
-
-            using (var scope = _serviceScopeFactory.CreateScope())
-            {
-                var hubActivator = scope.ServiceProvider.GetRequiredService<IHubActivator<THub, TClient>>();
-                var hub = hubActivator.Create();
-
-                try
-                {
-                    InitializeHub(hub, connection);
-
-                    object result = null;
-                    if (methodExecutor.IsMethodAsync)
-                    {
-                        if (methodExecutor.TaskGenericType == null)
-                        {
-                            await (Task)methodExecutor.Execute(hub, invocation.Arguments);
-                        }
-                        else
-                        {
-                            result = await methodExecutor.ExecuteAsync(hub, invocation.Arguments);
-                        }
-                    }
-                    else
-                    {
-                        result = methodExecutor.Execute(hub, invocation.Arguments);
-                    }
-
-                    return result;
-                }
-                finally
-                {
-                    hubActivator.Release(hub);
-                }
-            }
+            _logger.LogError("Unknown hub method '{method}'", invocation.Target);
+            await SendMessage(connection, protocol, new ResultMessage(invocation.InvocationId, error, payload: null));
+            await SendMessage(connection, protocol, new CompletionMessage(invocation.InvocationId));
         }
 
         private void InitializeHub(THub hub, Connection connection)
@@ -416,7 +360,7 @@ namespace Microsoft.AspNetCore.SignalR
             public HubMethodDescriptor(ObjectMethodExecutor methodExecutor)
             {
                 MethodExecutor = methodExecutor;
-                ParameterTypes = methodExecutor.ActionParameters.Select(p => p.ParameterType).ToArray();
+                ParameterTypes = methodExecutor.MethodParameters.Select(p => p.ParameterType).ToArray();
             }
 
             public ObjectMethodExecutor MethodExecutor { get; }
@@ -424,30 +368,37 @@ namespace Microsoft.AspNetCore.SignalR
             public Type[] ParameterTypes { get; }
         }
 
-        private class HubObserver : IObserver<object>
+        private class HubObserver : IObserver<object>, IDisposable
         {
             private TaskCompletionSource<object> _tcs;
             private long _invocationId;
             private IHubProtocol _protocol;
             private Connection _connection;
             private readonly HubEndPoint<THub, TClient> _ep;
+            private readonly IHubActivator<THub, TClient> _hubActivator;
+            private readonly THub _hub;
+            private int _disposed = 0;
 
-            public HubObserver(HubEndPoint<THub, TClient> ep, TaskCompletionSource<object> tcs, long invocationId, IHubProtocol protocol, Connection connection)
+            public HubObserver(HubEndPoint<THub, TClient> ep, IHubActivator<THub, TClient> hubActivator, THub hub, TaskCompletionSource<object> tcs, long invocationId, IHubProtocol protocol, Connection connection)
             {
                 _ep = ep;
                 _tcs = tcs;
                 _invocationId = invocationId;
                 _protocol = protocol;
                 _connection = connection;
+                _hubActivator = hubActivator;
+                _hub = hub;
             }
 
             public void OnCompleted()
             {
+                Dispose();
                 _tcs.TrySetResult(null);
             }
 
             public void OnError(Exception error)
             {
+                Dispose();
                 _tcs.TrySetResult(null);
                 _ = _ep.SendMessage(_connection, _protocol, new ResultMessage(_invocationId, error: error.Message, payload: null));
             }
@@ -457,6 +408,15 @@ namespace Microsoft.AspNetCore.SignalR
                 if (!_tcs.Task.IsCompleted)
                 {
                     _ = _ep.SendMessage(_connection, _protocol, new ResultMessage(_invocationId, error: null, payload: value));
+                }
+            }
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                {
+                    // It was previously undisposed. So do the clean-up
+                    _hubActivator.Release(_hub);
                 }
             }
         }

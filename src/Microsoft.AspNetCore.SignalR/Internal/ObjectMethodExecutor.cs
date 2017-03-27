@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Internal;
 
@@ -15,11 +16,16 @@ namespace Microsoft.AspNetCore.SignalR.Internal
     internal class ObjectMethodExecutor
     {
         private readonly object[] _parameterDefaultValues;
-        private readonly ActionExecutorAsync _executorAsync;
         private readonly ActionExecutor _executor;
 
         private static readonly MethodInfo _convertOfTMethod =
             typeof(ObjectMethodExecutor).GetRuntimeMethods().Single(methodInfo => methodInfo.Name == nameof(ObjectMethodExecutor.Convert));
+        private static readonly MethodInfo _fromAwaitableMethod =
+            typeof(Observable).GetRuntimeMethods().Single(methodInfo => methodInfo.Name == nameof(Observable.FromAwaitable));
+        private static readonly MethodInfo _fromInvocationMethod =
+            typeof(Observable).GetRuntimeMethods().Single(methodInfo => methodInfo.Name == nameof(Observable.FromInvocation));
+        private static readonly PropertyInfo _completedObservableProperty =
+            typeof(Observable).GetRuntimeProperties().Single(propertyInfo => propertyInfo.Name == nameof(Observable.Completed));
 
         private ObjectMethodExecutor(MethodInfo methodInfo, TypeInfo targetTypeInfo)
         {
@@ -30,43 +36,19 @@ namespace Microsoft.AspNetCore.SignalR.Internal
 
             MethodInfo = methodInfo;
             TargetTypeInfo = targetTypeInfo;
-            ActionParameters = methodInfo.GetParameters();
-            MethodReturnType = methodInfo.ReturnType;
-            IsMethodAsync = typeof(Task).IsAssignableFrom(MethodReturnType);
-            TaskGenericType = IsMethodAsync ? GetTaskInnerTypeOrNull(MethodReturnType) : null;
+            MethodParameters = methodInfo.GetParameters();
 
-            if (IsMethodAsync && TaskGenericType != null)
-            {
-                // For backwards compatibility we're creating a sync-executor for an async method.
-                _executor = GetExecutor(methodInfo, targetTypeInfo);
-                _executorAsync = GetExecutorAsync(TaskGenericType, methodInfo, targetTypeInfo);
-            }
-            else
-            {
-                _executor = GetExecutor(methodInfo, targetTypeInfo);
-            }
-
-            _parameterDefaultValues = GetParameterDefaultValues(ActionParameters);
+            _executor = GetExecutor(methodInfo, targetTypeInfo);
+            _parameterDefaultValues = GetParameterDefaultValues(MethodParameters);
         }
 
-        private delegate Task<object> ActionExecutorAsync(object target, object[] parameters);
-
-        private delegate object ActionExecutor(object target, object[] parameters);
-
-        private delegate void VoidActionExecutor(object target, object[] parameters);
+        private delegate IObservable<object> ActionExecutor(object target, object[] parameters);
 
         public MethodInfo MethodInfo { get; }
 
-        public ParameterInfo[] ActionParameters { get; }
-
         public TypeInfo TargetTypeInfo { get; }
 
-        public Type TaskGenericType { get; }
-
-        // This field is made internal set because it is set in unit tests.
-        public Type MethodReturnType { get; internal set; }
-
-        public bool IsMethodAsync { get; }
+        public ParameterInfo[] MethodParameters { get; }
 
         public static ObjectMethodExecutor Create(MethodInfo methodInfo, TypeInfo targetTypeInfo)
         {
@@ -74,19 +56,14 @@ namespace Microsoft.AspNetCore.SignalR.Internal
             return executor;
         }
 
-        public Task<object> ExecuteAsync(object target, object[] parameters)
-        {
-            return _executorAsync(target, parameters);
-        }
-
-        public object Execute(object target, object[] parameters)
+        public IObservable<object> Execute(object target, object[] parameters)
         {
             return _executor(target, parameters);
         }
 
         public object GetDefaultValueForParameter(int index)
         {
-            if (index < 0 || index > ActionParameters.Length - 1)
+            if (index < 0 || index > MethodParameters.Length - 1)
             {
                 throw new ArgumentOutOfRangeException(nameof(index));
             }
@@ -126,76 +103,122 @@ namespace Microsoft.AspNetCore.SignalR.Internal
                 methodCall = Expression.Call(null, methodInfo, parameters);
             }
 
+            var returnType = methodCall.Type.GetTypeInfo();
+
             // methodCall is "((Ttarget) target) method((T0) parameters[0], (T1) parameters[1], ...)"
             // Create function
             if (methodCall.Type == typeof(void))
             {
-                var lambda = Expression.Lambda<VoidActionExecutor>(methodCall, targetParameter, parametersParameter);
-                var voidExecutor = lambda.Compile();
-                return WrapVoidAction(voidExecutor);
+                // Create an immediately-completing observable with no results
+                var body = Expression.Block(
+                    methodCall,
+                    Expression.Property(null, _completedObservableProperty));
+
+                var lambda = Expression.Lambda<ActionExecutor>(body, targetParameter, parametersParameter);
+                return lambda.Compile();
+            }
+            else if (IsObservable(returnType))
+            {
+                var body = Expression.Convert(methodCall, typeof(IObservable<object>));
+                var lambda = Expression.Lambda<ActionExecutor>(body, targetParameter, parametersParameter);
+                return lambda.Compile();
+            }
+            else if (IsAwaitable(methodCall.Type, out var awaiterType, out var awaiterReturnType, out var getAwaiterMethod, out var isCompletedProperty, out var getResultMethod, out var onCompletedMethod))
+            {
+                var awaiterParam = Expression.Parameter(typeof(object));
+                var isCompletedLambda = Expression.Lambda<Func<object, bool>>(Expression.Property(Expression.Convert(awaiterParam, awaiterType), "IsCompleted"), awaiterParam);
+
+                var getResultCall = Expression.Call(Expression.Convert(awaiterParam, awaiterType), getResultMethod);
+                var getResultLambda = awaiterReturnType == typeof(void) ?
+                    Expression.Lambda<Func<object, object>>(Expression.Block(getResultCall, Expression.Constant(null, typeof(object))), awaiterParam) :
+                    Expression.Lambda<Func<object, object>>(Expression.Convert(getResultCall, typeof(object)), awaiterParam);
+
+                var actionParam = Expression.Parameter(typeof(Action));
+                var onCompletedLambda = Expression.Lambda<Action<object, Action>>(
+                    Expression.Call(Expression.Convert(awaiterParam, awaiterType), onCompletedMethod, actionParam), awaiterParam, actionParam);
+
+                var awaiter = Expression.Variable(typeof(object));
+                var body = Expression.Call(_fromAwaitableMethod,
+                    Expression.Constant(awaiterReturnType),
+                    Expression.Convert(Expression.Call(methodCall, getAwaiterMethod), typeof(object)),
+                    isCompletedLambda,
+                    getResultLambda,
+                    onCompletedLambda);
+                var lambda = Expression.Lambda<ActionExecutor>(body, targetParameter, parametersParameter);
+                return lambda.Compile();
             }
             else
             {
                 // must coerce methodCall to match ActionExecutor signature
                 var castMethodCall = Expression.Convert(methodCall, typeof(object));
-                var lambda = Expression.Lambda<ActionExecutor>(castMethodCall, targetParameter, parametersParameter);
+
+                // and wrap in observable
+                var asObservable = Expression.Call(_fromInvocationMethod, Expression.Lambda<Func<object>>(castMethodCall));
+
+                var lambda = Expression.Lambda<ActionExecutor>(asObservable, targetParameter, parametersParameter);
                 return lambda.Compile();
             }
         }
 
-        private static ActionExecutor WrapVoidAction(VoidActionExecutor executor)
+        private static bool IsAwaitable(Type type, out Type awaiterType, out Type returnType, out MethodInfo getAwaiterMethod, out PropertyInfo isCompletedProperty, out MethodInfo getResultMethod, out MethodInfo onCompletedMethod)
         {
-            return delegate (object target, object[] parameters)
+            // Based on Roslyn code: http://source.roslyn.io/#Microsoft.CodeAnalysis.Workspaces/Shared/Extensions/ISymbolExtensions.cs,db4d48ba694b9347
+
+            // object GetAwaiter();
+            getAwaiterMethod = type.GetRuntimeMethods().FirstOrDefault(m => m.Name.Equals("GetAwaiter"));
+            if (getAwaiterMethod == null)
             {
-                executor(target, parameters);
-                return null;
-            };
-        }
-
-        private static ActionExecutorAsync GetExecutorAsync(Type taskInnerType, MethodInfo methodInfo, TypeInfo targetTypeInfo)
-        {
-            // Parameters to executor
-            var targetParameter = Expression.Parameter(typeof(object), "target");
-            var parametersParameter = Expression.Parameter(typeof(object[]), "parameters");
-
-            // Build parameter list
-            var parameters = new List<Expression>();
-            var paramInfos = methodInfo.GetParameters();
-            for (int i = 0; i < paramInfos.Length; i++)
-            {
-                var paramInfo = paramInfos[i];
-                var valueObj = Expression.ArrayIndex(parametersParameter, Expression.Constant(i));
-                var valueCast = Expression.Convert(valueObj, paramInfo.ParameterType);
-
-                // valueCast is "(Ti) parameters[i]"
-                parameters.Add(valueCast);
+                awaiterType = null;
+                isCompletedProperty = null;
+                onCompletedMethod = null;
+                getResultMethod = null;
+                returnType = null;
+                return false;
             }
 
-            // Call method
-            var instanceCast = Expression.Convert(targetParameter, targetTypeInfo.AsType());
-            var methodCall = Expression.Call(instanceCast, methodInfo, parameters);
+            awaiterType = getAwaiterMethod.ReturnType;
+            if (awaiterType == null)
+            {
+                isCompletedProperty = null;
+                onCompletedMethod = null;
+                getResultMethod = null;
+                returnType = null;
+                return false;
+            }
 
-            var coerceMethodCall = GetCoerceMethodCallExpression(taskInnerType, methodCall, methodInfo);
-            var lambda = Expression.Lambda<ActionExecutorAsync>(coerceMethodCall, targetParameter, parametersParameter);
-            return lambda.Compile();
+            // bool IsCompleted { get; }
+            isCompletedProperty = awaiterType.GetRuntimeProperties().FirstOrDefault(p => p.Name.Equals("IsCompleted") && p.PropertyType == typeof(bool) && p.GetMethod != null);
+            if (isCompletedProperty == null)
+            {
+                onCompletedMethod = null;
+                getResultMethod = null;
+                returnType = null;
+                return false;
+            }
+
+            onCompletedMethod = awaiterType.GetRuntimeMethods().FirstOrDefault(m => m.Name.Equals("OnCompleted") && m.ReturnType == typeof(void) && m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType == typeof(Action));
+            if(onCompletedMethod == null)
+            {
+                getResultMethod = null;
+                returnType = null;
+                return false;
+            }
+
+            // void GetResult; || T GetResult();
+            getResultMethod = awaiterType.GetRuntimeMethods().FirstOrDefault(m => m.Name.Equals("GetResult") && m.GetParameters().Length == 0);
+            if(getResultMethod == null)
+            {
+                returnType = null;
+                return false;
+            }
+
+            returnType = getResultMethod.ReturnType;
+            return true;
         }
 
-        // We need to CoerceResult as the object value returned from methodInfo.Invoke has to be cast to a Task<T>.
-        // This is necessary to enable calling await on the returned task.
-        // i.e we need to write the following var result = await (Task<ActualType>)mInfo.Invoke.
-        // Returning Task<object> enables us to await on the result.
-        private static Expression GetCoerceMethodCallExpression(
-            Type taskValueType,
-            MethodCallExpression methodCall,
-            MethodInfo methodInfo)
+        private static bool IsObservable(TypeInfo type)
         {
-            var castMethodCall = Expression.Convert(methodCall, typeof(object));
-            // for: public Task<T> Action()
-            // constructs: return (Task<object>)Convert<T>((Task<T>)result)
-            var genericMethodInfo = _convertOfTMethod.MakeGenericMethod(taskValueType);
-            var genericMethodCall = Expression.Call(null, genericMethodInfo, castMethodCall);
-            var convertedResult = Expression.Convert(genericMethodCall, typeof(Task<object>));
-            return convertedResult;
+            return type.ImplementedInterfaces.Any(i => i.GetTypeInfo().IsGenericType && i.GetGenericTypeDefinition() == typeof(IObservable<>));
         }
 
         /// <summary>
@@ -236,7 +259,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal
                 {
                     var defaultValueAttribute = parameterInfo
                         .GetCustomAttribute<DefaultValueAttribute>(inherit: false);
- 
+
                     if (defaultValueAttribute?.Value == null)
                     {
                         defaultValue = parameterInfo.ParameterType.GetTypeInfo().IsValueType
