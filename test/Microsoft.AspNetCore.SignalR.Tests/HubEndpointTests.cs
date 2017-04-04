@@ -28,7 +28,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 // kill the connection
                 client.Dispose();
 
-                await endPointTask;
+                await endPointTask.OrTimeout();
 
                 Assert.Equal(2, trackDispose.DisposeCount);
             }
@@ -55,7 +55,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             {
                 var exception =
                     await Assert.ThrowsAsync<InvalidOperationException>(
-                        async () => await endPoint.OnConnectedAsync(client.Connection));
+                        async () => await endPoint.OnConnectedAsync(client.Connection).OrTimeout()).OrTimeout();
                 Assert.Equal("Lifetime manager OnConnectedAsync failed.", exception.Message);
 
                 client.Dispose();
@@ -84,7 +84,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 var endPointTask = endPoint.OnConnectedAsync(client.Connection);
                 client.Dispose();
 
-                var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await endPointTask);
+                var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await endPointTask.OrTimeout()).OrTimeout();
                 Assert.Equal("Hub OnConnected failed.", exception.Message);
 
                 mockLifetimeManager.Verify(m => m.OnConnectedAsync(It.IsAny<Connection>()), Times.Once);
@@ -108,7 +108,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 var endPointTask = endPoint.OnConnectedAsync(client.Connection);
                 client.Dispose();
 
-                var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await endPointTask);
+                var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await endPointTask.OrTimeout()).OrTimeout();
                 Assert.Equal("Hub OnDisconnected failed.", exception.Message);
 
                 mockLifetimeManager.Verify(m => m.OnConnectedAsync(It.IsAny<Connection>()), Times.Once);

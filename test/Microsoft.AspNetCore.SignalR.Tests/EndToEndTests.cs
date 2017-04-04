@@ -51,15 +51,15 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             const string message = "Hello, World!";
             using (var ws = new ClientWebSocket())
             {
-                await ws.ConnectAsync(new Uri(_serverFixture.WebSocketsUrl + "/echo/ws"), CancellationToken.None);
+                await ws.ConnectAsync(new Uri(_serverFixture.WebSocketsUrl + "/echo/ws"), CancellationToken.None).OrTimeout();
                 var bytes = Encoding.UTF8.GetBytes(message);
-                await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Binary, true, CancellationToken.None);
+                await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Binary, true, CancellationToken.None).OrTimeout();
                 var buffer = new ArraySegment<byte>(new byte[1024]);
-                var result = await ws.ReceiveAsync(buffer, CancellationToken.None);
+                var result = await ws.ReceiveAsync(buffer, CancellationToken.None).OrTimeout();
 
                 Assert.Equal(bytes, buffer.Array.AsSpan().Slice(0, message.Length).ToArray());
 
-                await ws.CloseAsync(WebSocketCloseStatus.Empty, "", CancellationToken.None);
+                await ws.CloseAsync(WebSocketCloseStatus.Empty, "", CancellationToken.None).OrTimeout();
             }
         }
 
@@ -103,9 +103,9 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                             }
                         };
 
-                    await connection.StartAsync(transport, httpClient);
+                    await connection.StartAsync(transport, httpClient).OrTimeout();
 
-                    await connection.SendAsync(Encoding.UTF8.GetBytes(message), MessageType.Text);
+                    await connection.SendAsync(Encoding.UTF8.GetBytes(message), MessageType.Text).OrTimeout();
 
                     var receiveData = new ReceiveData();
 
@@ -113,7 +113,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 }
                 finally
                 {
-                    await connection.DisposeAsync();
+                    await connection.DisposeAsync().OrTimeout();
                 }
             }
         }
@@ -143,9 +143,9 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 var receiveTcs = new TaskCompletionSource<byte[]>();
                 connection.Received += (data, messageType) => receiveTcs.SetResult(data);
 
-                await connection.StartAsync(transport);
+                await connection.StartAsync(transport).OrTimeout();
 
-                await connection.SendAsync(Encoding.UTF8.GetBytes(message), MessageType.Text);
+                await connection.SendAsync(Encoding.UTF8.GetBytes(message), MessageType.Text).OrTimeout();
 
                 var receiveData = new ReceiveData();
 
@@ -154,7 +154,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             }
             finally
             {
-                await connection.DisposeAsync();
+                await connection.DisposeAsync().OrTimeout();
             }
         }
     }
