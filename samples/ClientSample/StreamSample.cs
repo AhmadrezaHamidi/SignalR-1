@@ -54,6 +54,8 @@ namespace ClientSample
                     // Call the method on the server
                     var result = await connection.Invoke<IObservable<string>>("SubscribeToStock", "MSFT");
 
+                    foreach(var item in )
+
                     await result.ForEachAsync((s) => Console.WriteLine(s), cts.Token);
                 }
                 finally

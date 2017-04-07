@@ -208,9 +208,10 @@ namespace Microsoft.AspNetCore.SignalR.Internal
 
         private static Type GetTaskInnerTypeOrNull(Type type)
         {
-            var genericType = ClosedGenericMatcher.ExtractGenericInterface(type, typeof(Task<>));
+            throw new NotSupportedException();
+            //var genericType = ClosedGenericMatcher.ExtractGenericInterface(type, typeof(Task<>));
 
-            return genericType?.GenericTypeArguments[0];
+            //return genericType?.GenericTypeArguments[0];
         }
 
         private static Task<object> Convert<T>(object taskAsObject)
