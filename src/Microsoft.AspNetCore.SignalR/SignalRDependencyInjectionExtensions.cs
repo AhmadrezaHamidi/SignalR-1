@@ -12,13 +12,16 @@ namespace Microsoft.Extensions.DependencyInjection
         public static ISignalRBuilder AddSignalR(this IServiceCollection services)
         {
             services.AddSockets();
-            services.AddSingleton(typeof(HubLifetimeManager<>), typeof(DefaultHubLifetimeManager<>));
-            services.AddSingleton(typeof(IHubContext<>), typeof(HubContext<>));
-            services.AddSingleton(typeof(HubEndPoint<>), typeof(HubEndPoint<>));
+            //services.AddSingleton(typeof(HubLifetimeManager<>), typeof(DefaultHubLifetimeManager<>));
+            //services.AddSingleton(typeof(IHubContext<>), typeof(HubContext<>));
+            //services.AddSingleton(typeof(HubEndPoint<>), typeof(HubEndPoint<>));
+            //services.AddSingleton<JsonNetInvocationAdapter>();
+            //services.AddSingleton<InvocationAdapterRegistry>();
+            //services.AddScoped(typeof(IHubActivator<,>), typeof(DefaultHubActivator<,>));
+
+            services.AddSingleton<ClientManager>();
+            services.AddSingleton<SignalREndPoint>();
             services.AddSingleton<IConfigureOptions<SignalROptions>, SignalROptionsSetup>();
-            services.AddSingleton<JsonNetInvocationAdapter>();
-            services.AddSingleton<InvocationAdapterRegistry>();
-            services.AddScoped(typeof(IHubActivator<,>), typeof(DefaultHubActivator<,>));
             services.AddRouting();
 
             return new SignalRBuilder(services);

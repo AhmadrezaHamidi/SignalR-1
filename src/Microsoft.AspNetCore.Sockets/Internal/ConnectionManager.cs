@@ -7,10 +7,9 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Channels;
-using Microsoft.AspNetCore.Sockets.Internal;
 using Microsoft.Extensions.Logging;
 
-namespace Microsoft.AspNetCore.Sockets
+namespace Microsoft.AspNetCore.Sockets.Internal
 {
     public class ConnectionManager
     {

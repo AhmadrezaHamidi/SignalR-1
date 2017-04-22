@@ -8,32 +8,50 @@
     <div class="clear">
     </div>
     <form id="sendmessage" action="#">
-        <input type="text" id="new-message" />
+        <input type="text" id="message" name="message" />
         <input type="submit" id="send" value="Send" class="send" />
     </form>
 </div>
 <script src="lib/signalr-client/signalr-client.js"></script>
 <script>
-let connection = new signalR.HubConnection(`http://${document.location.host}/chat`, 'formatType=json&format=text');
+    const sendUrl = `http://${document.location.host}/Chat/Send`;
+    let connection = new signalR.Connection(`http://${document.location.host}/signalr`);
+    let sendmessageForm = document.getElementById('sendmessage');
 
-connection.on('Send', function (message) {
-    var child = document.createElement('li');
-    child.innerText = message;
-    document.getElementById('messages').appendChild(child);
-});
-
-connection.start();
-
-document.getElementById('sendmessage').addEventListener('submit', event => {
-    let data = document.getElementById('new-message').value;
-
-    connection.invoke('Send', data).catch(err => {
+    connection.onDataReceived = function (data) {
         var child = document.createElement('li');
-        child.style.color = 'red';
-        child.innerText = err;
+        child.innerText = data;
         document.getElementById('messages').appendChild(child);
-    });
+    }
 
-    event.preventDefault();
-});
+    connection.start();
+
+    sendmessageForm.addEventListener('submit', event => {
+        let form = new FormData(sendmessageForm);
+
+        let xhr = new XMLHttpRequest();
+
+        function error() {
+            console.log(`Error sending message: ${xhr.status} ${xhr.statusText}\r\n${xhr.responseText}`);
+        }
+
+        xhr.onload = function (_) {
+            if (xhr.status < 200 || xhr.status > 299) {
+                error();
+            }
+            else {
+                console.log("Sent message");
+            }
+        }
+
+        xhr.onerror = function (_) {
+            error();
+        }
+
+        xhr.open("POST", sendUrl);
+
+        xhr.send(form);
+
+        event.preventDefault();
+    });
 </script>
