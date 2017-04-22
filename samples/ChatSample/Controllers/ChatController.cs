@@ -15,11 +15,11 @@ namespace ChatSample.Hubs
     [Authorize]
     public class ChatController : Controller
     {
-        private readonly ClientManager _clients;
+        private readonly SignalRContext _signalR;
 
-        public ChatController(ClientManager clients)
+        public ChatController(SignalRContext signalR)
         {
-            _clients = clients;
+            _signalR = signalR;
         }
 
         public async Task<IActionResult> Send(string message)
@@ -28,7 +28,7 @@ namespace ChatSample.Hubs
 
             var encoded = Encoding.UTF8.GetBytes(message);
 
-            await _clients.All.SendAsync(new Message(encoded, MessageType.Text), CancellationToken.None);
+            await _signalR.All.SendAsync(new Message(encoded, MessageType.Text), CancellationToken.None);
 
             return StatusCode(StatusCodes.Status202Accepted);
         }

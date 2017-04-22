@@ -1,51 +1,19 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Sockets;
-using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.SignalR
 {
-    public class ClientProxy : IClientProxy
+    public struct ClientProxy
     {
-        private Func<IEnumerable<Connection>> _getConnections;
-        private readonly ILogger _logger;
+        private Func<Message, CancellationToken, Task> _implementation;
 
-        public ClientProxy(Func<IEnumerable<Connection>> getConnections, ILogger logger)
+        public ClientProxy(Func<Message, CancellationToken, Task> implementation)
         {
-            _getConnections = getConnections;
-            _logger = logger;
+            _implementation = implementation;
         }
 
-        public async Task SendAsync(Message message, CancellationToken cancellationToken)
-        {
-            var connections = _getConnections();
-            foreach (var connection in connections)
-            {
-                _logger.LogTrace("[Connection {connectionId}] Sending {length} byte {type} message", connection.ConnectionId, message.Payload.Length, message.Type);
-                if(!await SendToAsync(connection, message, cancellationToken))
-                {
-                    _logger.LogTrace("[Connection {connectionId}] Unable to send message, connection has terminated");
-                }
-                else
-                {
-                    _logger.LogTrace("[Connection {connectionId}] Message sent");
-                }
-            }
-        }
-
-        private async Task<bool> SendToAsync(Connection connection, Message message, CancellationToken cancellationToken)
-        {
-            while (!connection.Transport.Output.TryWrite(message))
-            {
-                if (!await connection.Transport.Output.WaitToWriteAsync(cancellationToken))
-                {
-                    // Connection has closed
-                    return false;
-                }
-            }
-            return true;
-        }
+        public Task SendAsync(Message message, CancellationToken cancellationToken) => _implementation(message, cancellationToken);
     }
 }
