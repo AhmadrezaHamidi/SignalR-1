@@ -5,13 +5,13 @@ using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.SignalR
 {
-    public class PushContext
+    public class SignalRContext
     {
         public ConnectionLifetimeManager LifetimeManager { get; }
 
         public ClientProxy All { get; }
 
-        public PushContext(ConnectionLifetimeManager lifetimeManager)
+        public SignalRContext(ConnectionLifetimeManager lifetimeManager)
         {
             LifetimeManager = lifetimeManager;
 
