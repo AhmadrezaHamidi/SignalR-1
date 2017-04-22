@@ -7,7 +7,7 @@ using System.Runtime.CompilerServices;
 
 namespace System.Buffers
 {
-    internal static class IOutputExtensions
+    public static class IOutputExtensions
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryWriteBigEndian<[Primitive] T>(this IOutput self, T value) where T : struct

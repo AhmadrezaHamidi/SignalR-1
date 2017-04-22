@@ -42,11 +42,11 @@ namespace Microsoft.AspNetCore.SignalR
             // If it fails, it's because it's already gone somehow :)
             if(_connections.TryRemove(connection.ConnectionId, out _))
             {
-                _logger.LogTrace("[Connection {connectionId}] Unregistered Successfully");
+                _logger.LogTrace("[Connection {connectionId}] Unregistered Successfully", connection.ConnectionId);
             }
             else
             {
-                _logger.LogTrace("[Connection {connectionId}] Was already unregistered!");
+                _logger.LogTrace("[Connection {connectionId}] Was already unregistered!", connection.ConnectionId);
             }
         }
     }

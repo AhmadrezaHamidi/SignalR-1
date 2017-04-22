@@ -9,6 +9,7 @@ using System.IO.Pipelines;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Channels;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Sockets.Internal;
 using Microsoft.AspNetCore.Sockets.Internal.Formatters;
@@ -58,6 +59,28 @@ namespace Microsoft.AspNetCore.Sockets
             }
         }
 
+        private async Task RunHttpStreamingTransport(EndPoint endpoint, HttpContext context, TransportType transportType, TransportType supportedTransports, Func<ReadableChannel<Message>, ILoggerFactory, HttpStreamingTransportBase> transportFactory)
+        {
+            // Connection must already exist
+            var state = await GetConnectionAsync(context);
+            if (state == null)
+            {
+                // No such connection, GetConnection already set the response status code
+                return;
+            }
+
+            if (!await EnsureConnectionStateAsync(state, context, TransportType.ServerSentEvents, supportedTransports))
+            {
+                // Bad connection state. It's already set the response status code.
+                return;
+            }
+
+            // We only need to provide the Input channel since writing to the application is handled through /send.
+            var transport = transportFactory(state.Application.Input, _loggerFactory);
+
+            await DoPersistentConnection(endpoint, transport, context, state);
+        }
+
         private async Task ExecuteEndpointAsync<TEndPoint>(string path, HttpContext context, EndPoint endpoint, EndPointOptions<TEndPoint> options) where TEndPoint : EndPoint
         {
             var supportedTransports = options.Transports;
@@ -65,24 +88,11 @@ namespace Microsoft.AspNetCore.Sockets
             // Server sent events transport
             if (context.Request.Path.StartsWithSegments(path + "/sse"))
             {
-                // Connection must already exist
-                var state = await GetConnectionAsync(context);
-                if (state == null)
-                {
-                    // No such connection, GetConnection already set the response status code
-                    return;
-                }
-
-                if (!await EnsureConnectionStateAsync(state, context, TransportType.ServerSentEvents, supportedTransports))
-                {
-                    // Bad connection state. It's already set the response status code.
-                    return;
-                }
-
-                // We only need to provide the Input channel since writing to the application is handled through /send.
-                var sse = new ServerSentEventsTransport(state.Application.Input, _loggerFactory);
-
-                await DoPersistentConnection(endpoint, sse, context, state);
+                await RunHttpStreamingTransport(endpoint, context, TransportType.ServerSentEvents, supportedTransports, (input, loggerFactory) => new ServerSentEventsTransport(input, loggerFactory));
+            }
+            else if (context.Request.Path.StartsWithSegments(path + "/stream"))
+            {
+                await RunHttpStreamingTransport(endpoint, context, TransportType.MultipartStreaming, supportedTransports, (input, loggerFactory) => new MimeMultipartTransport(input, loggerFactory));
             }
             else if (context.Request.Path.StartsWithSegments(path + "/ws"))
             {
