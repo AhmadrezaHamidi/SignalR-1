@@ -28,6 +28,7 @@ namespace ChatSample.Hubs
 
             var encoded = Encoding.UTF8.GetBytes(message);
 
+            // TODO: InvokeAsync, but it's easy now :)
             await _signalR.All.SendAsync(new Message(encoded, MessageType.Text), CancellationToken.None);
 
             return StatusCode(StatusCodes.Status202Accepted);
