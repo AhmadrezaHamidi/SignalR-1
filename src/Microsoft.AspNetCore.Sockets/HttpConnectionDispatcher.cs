@@ -1,4 +1,4 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
@@ -10,12 +10,11 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Sockets.Abstractions;
 using Microsoft.AspNetCore.Sockets.Internal;
 using Microsoft.AspNetCore.Sockets.Internal.Formatters;
 using Microsoft.AspNetCore.Sockets.Transports;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 
 namespace Microsoft.AspNetCore.Sockets
@@ -33,18 +32,18 @@ namespace Microsoft.AspNetCore.Sockets
             _logger = _loggerFactory.CreateLogger<HttpConnectionDispatcher>();
         }
 
-        public async Task ExecuteAsync<TEndPoint>(string path, HttpContext context) where TEndPoint : EndPoint
+        public async Task ExecuteAsync(string path, HttpContext context, SocketDelegate socket)
         {
-            var options = context.RequestServices.GetRequiredService<IOptions<EndPointOptions<TEndPoint>>>().Value;
+            //var options = context.RequestServices.GetRequiredService<IOptions<EndPointOptions<TEndPoint>>>().Value;
             // TODO: Authorize attribute on EndPoint
-            if (!await AuthorizeHelper.AuthorizeAsync(context, options.AuthorizationPolicyNames))
-            {
-                return;
-            }
+            //if (!await AuthorizeHelper.AuthorizeAsync(context, options.AuthorizationPolicyNames))
+            //{
+            //    return;
+            //}
 
             if (context.Request.Path.StartsWithSegments(path + "/negotiate"))
             {
-                await ProcessNegotiate(context, options);
+                await ProcessNegotiate(context);
             }
             else if (context.Request.Path.StartsWithSegments(path + "/send"))
             {
@@ -53,14 +52,13 @@ namespace Microsoft.AspNetCore.Sockets
             else
             {
                 // Get the end point mapped to this http connection
-                var endpoint = (EndPoint)context.RequestServices.GetRequiredService<TEndPoint>();
-                await ExecuteEndpointAsync(path, context, endpoint, options);
+                await ExecuteSocketAsync(path, context, socket);
             }
         }
 
-        private async Task ExecuteEndpointAsync<TEndPoint>(string path, HttpContext context, EndPoint endpoint, EndPointOptions<TEndPoint> options) where TEndPoint : EndPoint
+        private async Task ExecuteSocketAsync(string path, HttpContext context, SocketDelegate socket)
         {
-            var supportedTransports = options.Transports;
+            var supportedTransports = TransportType.All; // options.Transports;
 
             // Server sent events transport
             if (context.Request.Path.StartsWithSegments(path + "/sse"))
@@ -82,7 +80,7 @@ namespace Microsoft.AspNetCore.Sockets
                 // We only need to provide the Input channel since writing to the application is handled through /send.
                 var sse = new ServerSentEventsTransport(state.Application.Input, _loggerFactory);
 
-                await DoPersistentConnection(endpoint, sse, context, state);
+                await DoPersistentConnection(socket, sse, context, state);
             }
             else if (context.Request.Path.StartsWithSegments(path + "/ws"))
             {
@@ -100,9 +98,9 @@ namespace Microsoft.AspNetCore.Sockets
                     return;
                 }
 
-                var ws = new WebSocketsTransport(options.WebSockets, state.Application, _loggerFactory);
+                var ws = new WebSocketsTransport(new WebSocketOptions(), state.Application, _loggerFactory);
 
-                await DoPersistentConnection(endpoint, ws, context, state);
+                await DoPersistentConnection(socket, ws, context, state);
             }
             else if (context.Request.Path.StartsWithSegments(path + "/poll"))
             {
@@ -169,7 +167,7 @@ namespace Microsoft.AspNetCore.Sockets
 
                         state.Connection.Metadata[ConnectionMetadataNames.Transport] = TransportType.LongPolling;
 
-                        state.ApplicationTask = ExecuteApplication(endpoint, state.Connection);
+                        state.ApplicationTask = ExecuteSocket(socket, state.Connection);
                     }
                     else
                     {
@@ -239,7 +237,7 @@ namespace Microsoft.AspNetCore.Sockets
             return state;
         }
 
-        private async Task DoPersistentConnection(EndPoint endpoint,
+        private async Task DoPersistentConnection(SocketDelegate socket,
                                                   IHttpTransport transport,
                                                   HttpContext context,
                                                   ConnectionState state)
@@ -274,7 +272,7 @@ namespace Microsoft.AspNetCore.Sockets
                 state.RequestId = context.TraceIdentifier;
 
                 // Call into the end point passing the connection
-                state.ApplicationTask = ExecuteApplication(endpoint, state.Connection);
+                state.ApplicationTask = ExecuteSocket(socket, state.Connection);
 
                 // Start the transport
                 state.TransportTask = transport.ProcessRequestAsync(context, context.RequestAborted);
@@ -290,17 +288,16 @@ namespace Microsoft.AspNetCore.Sockets
             await _manager.DisposeAndRemoveAsync(state);
         }
 
-        private async Task ExecuteApplication(EndPoint endpoint, Connection connection)
+        private async Task ExecuteSocket(SocketDelegate socket, Connection connection)
         {
             // Jump onto the thread pool thread so blocking user code doesn't block the setup of the
             // connection and transport
             await AwaitableThreadPool.Yield();
 
-            // Running this in an async method turns sync exceptions into async ones
-            await endpoint.OnConnectedAsync(connection);
+            await socket(connection);
         }
 
-        private Task ProcessNegotiate<TEndPoint>(HttpContext context, EndPointOptions<TEndPoint> options) where TEndPoint : EndPoint
+        private Task ProcessNegotiate(HttpContext context)
         {
             // Establish the connection
             var state = CreateConnection(context);

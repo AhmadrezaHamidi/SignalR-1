@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -25,7 +26,10 @@ namespace Microsoft.AspNetCore.SignalR.Test.Server
             }
 
             app.UseFileServer();
-            app.UseSockets(options => options.MapEndpoint<EchoEndPoint>("/echo"));
+            app.UseSockets(routes =>
+            {
+                routes.MapSocket("/echo", socket => socket.UseEndPoint<EchoEndPoint>());
+            });
             app.UseSignalR(routes =>
             {
                 routes.MapHub<TestHub>("/testhub");

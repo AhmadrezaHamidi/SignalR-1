@@ -31,7 +31,10 @@ namespace Microsoft.AspNetCore.Builder
 
         public void MapHub<THub>(string path) where THub : Hub<IClientProxy>
         {
-            _routes.MapEndpoint<HubEndPoint<THub>>(path);
+            _routes.MapSocket(path, socket =>
+            {
+                socket.UseEndPoint<HubEndPoint<THub>>(path);
+            });
         }
     }
 }

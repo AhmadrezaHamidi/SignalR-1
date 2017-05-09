@@ -4,6 +4,7 @@
 using System;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Sockets;
+using Microsoft.AspNetCore.Sockets.Abstractions;
 using Microsoft.AspNetCore.Sockets.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -36,9 +37,12 @@ namespace Microsoft.AspNetCore.Builder
             _dispatcher = dispatcher;
         }
 
-        public void MapEndpoint<TEndPoint>(string path) where TEndPoint : EndPoint
+        public void MapSocket(string path, Action<ISocketBuilder> socketConfig)
         {
-            _routes.AddPrefixRoute(path, new RouteHandler(c => _dispatcher.ExecuteAsync<TEndPoint>(path, c)));
+            var socketBuilder = new SocketBuilder(_routes.ServiceProvider);
+            socketConfig(socketBuilder);
+            var socket = socketBuilder.Build();
+            _routes.AddPrefixRoute(path, new RouteHandler(c => _dispatcher.ExecuteAsync(path, c, socket)));
         }
     }
 }

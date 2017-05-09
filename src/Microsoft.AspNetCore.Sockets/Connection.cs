@@ -3,14 +3,23 @@
 
 using System;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Http.Features.Authentication;
 
 namespace Microsoft.AspNetCore.Sockets
 {
-    public class Connection : IDisposable
+    public class Connection
     {
         public string ConnectionId { get; }
 
-        public ClaimsPrincipal User { get; set; }
+        public IFeatureCollection Features { get; }
+
+        public ClaimsPrincipal User
+        {
+            get => GetOrAddFeature<IAuthenticationHandler>().User;
+            set => GetOrAddFeature<IAuthenticationHandler>().User = value;
+        }
+
         public ConnectionMetadata Metadata { get; } = new ConnectionMetadata();
 
         public IChannelConnection<Message> Transport { get; }
@@ -19,11 +28,18 @@ namespace Microsoft.AspNetCore.Sockets
         {
             Transport = transport;
             ConnectionId = id;
+            Features = new FeatureCollection();
         }
 
-        public void Dispose()
+        private T GetOrAddFeature<T>(Func<T> constructor) where T: class
         {
-            Transport.Dispose();
+            var feature = Features.Get<T>();
+            if(feature == null)
+            {
+                feature = constructor();
+                Features.Set(feature);
+            }
+            return feature;
         }
     }
 }
