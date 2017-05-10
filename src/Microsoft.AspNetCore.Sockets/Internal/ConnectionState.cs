@@ -66,7 +66,6 @@ namespace Microsoft.AspNetCore.Sockets.Internal
                         Application.Output.TryComplete(TransportTask.Exception.InnerException);
                     }
 
-                    Connection.Dispose();
                     Application.Dispose();
 
                     var applicationTask = ApplicationTask ?? Task.CompletedTask;

@@ -92,9 +92,12 @@ namespace ChatSample
             // Add external authentication middleware below. To configure them please see http://go.microsoft.com/fwlink/?LinkID=532715
             //app.UseCookieAuthentication();
 
-            app.UseSignalR(routes =>
+            app.UseSockets(routes =>
             {
-                routes.MapHub<Chat>("/chat");
+                routes.MapSocket("/chat", socket =>
+                {
+                    socket.UseHub<Chat>();
+                });
             });
 
             app.UseMvc(routes =>

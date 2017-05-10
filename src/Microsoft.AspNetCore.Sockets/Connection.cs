@@ -5,19 +5,23 @@ using System;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Features.Authentication;
+using Microsoft.AspNetCore.Sockets.Features;
 
 namespace Microsoft.AspNetCore.Sockets
 {
     public class Connection
     {
+        private static readonly Func<IAuthenticationFeature> _newAuthenticationFeature =
+            () => new AuthenticationFeature();
+
         public string ConnectionId { get; }
 
         public IFeatureCollection Features { get; }
 
         public ClaimsPrincipal User
         {
-            get => GetOrAddFeature<IAuthenticationHandler>().User;
-            set => GetOrAddFeature<IAuthenticationHandler>().User = value;
+            get => GetOrAddFeature<IAuthenticationFeature>(_newAuthenticationFeature).User;
+            set => GetOrAddFeature<IAuthenticationFeature>(_newAuthenticationFeature).User = value;
         }
 
         public ConnectionMetadata Metadata { get; } = new ConnectionMetadata();
@@ -31,10 +35,10 @@ namespace Microsoft.AspNetCore.Sockets
             Features = new FeatureCollection();
         }
 
-        private T GetOrAddFeature<T>(Func<T> constructor) where T: class
+        private T GetOrAddFeature<T>(Func<T> constructor) where T : class
         {
             var feature = Features.Get<T>();
-            if(feature == null)
+            if (feature == null)
             {
                 feature = constructor();
                 Features.Set(feature);
