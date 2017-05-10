@@ -800,6 +800,13 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var manager = CreateConnectionManager();
             var state = manager.CreateConnection();
 
+            var options = new HttpSocketOptions();
+            options.WebSockets.CloseTimeout = TimeSpan.FromSeconds(1);
+
+            var socket = new SocketBuilder(new ServiceProvider())
+                .UseEndPoint<TestEndPoint>()
+                .Build();
+
             var dispatcher = new HttpConnectionDispatcher(manager, new LoggerFactory());
 
             var context = MakeRequest<TestEndPoint>("/send", state, format);
@@ -812,10 +819,15 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var messages = new List<Message>();
             using (context.Request.Body = new MemoryStream(buffer, writable: false))
             {
-                await dispatcher.ExecuteAsync<TestEndPoint>("", context).OrTimeout();
+                await dispatcher.ExecuteAsync("", context, options, socket).OrTimeout();
             }
 
-            while (state.Connection.Transport.Input.TryRead(out var message))
+            if(!state.Connection.TryGetChannel(out var channel))
+            {
+                throw new InvalidOperationException("Unable to access connection Channel");
+            }
+
+            while (channel.Input.TryRead(out var message))
             {
                 messages.Add(message);
             }

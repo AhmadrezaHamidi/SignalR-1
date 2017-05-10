@@ -2,14 +2,16 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Collections.Generic;
+using System.Net;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Channels;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.SignalR.Internal;
 using Microsoft.AspNetCore.SignalR.Internal.Protocol;
 using Microsoft.AspNetCore.Sockets;
+using Microsoft.AspNetCore.Sockets.Features;
 using Microsoft.AspNetCore.Sockets.Internal;
 using Newtonsoft.Json;
 
@@ -21,9 +23,9 @@ namespace Microsoft.AspNetCore.SignalR.Tests
         private IHubProtocol _protocol;
         private CancellationTokenSource _cts;
 
-        public Connection Connection;
+        public ConnectionContext Connection;
         public IChannelConnection<Message> Application { get; }
-        public Task Connected => Connection.Metadata.Get<TaskCompletionSource<bool>>("ConnectedTask").Task;
+        public Task Connected => ((TaskCompletionSource<bool>)Connection.Items["ConnectedTask"]).Task;
 
         public TestClient(IServiceProvider serviceProvider)
         {
@@ -33,9 +35,24 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             Application = ChannelConnection.Create<Message>(input: applicationToTransport, output: transportToApplication);
             var transport = ChannelConnection.Create<Message>(input: transportToApplication, output: applicationToTransport);
 
-            Connection = new Connection(Guid.NewGuid().ToString(), transport);
+            Connection = new DefaultConnectionContext();
+            var connectionFeature = new HttpConnectionFeature()
+            {
+                ConnectionId = Guid.NewGuid().ToString(),
+
+                // TODO(anurse): Figure out how to flow this data properly
+                LocalIpAddress = IPAddress.Any,
+                LocalPort = 0,
+                RemoteIpAddress = IPAddress.Any,
+                RemotePort = 0
+            };
+            Connection.Features.Set<IHttpConnectionFeature>(connectionFeature);
+
+            var channelFeature = new ConnectionChannelFeature(transport);
+            Connection.Features.Set<IConnectionChannelFeature>(channelFeature);
+
             Connection.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.Name, Interlocked.Increment(ref _id).ToString()) }));
-            Connection.Metadata["ConnectedTask"] = new TaskCompletionSource<bool>();
+            Connection.Items["ConnectedTask"] = new TaskCompletionSource<bool>();
 
             _protocol = new JsonHubProtocol(new JsonSerializer());
 
