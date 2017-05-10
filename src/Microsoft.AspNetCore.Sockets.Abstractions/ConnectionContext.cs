@@ -22,9 +22,5 @@ namespace Microsoft.AspNetCore.Sockets
         public abstract CancellationToken ConnectionAborted { get; set; }
 
         public abstract void Abort();
-
-        public abstract bool TryGetPipe(out IPipeConnection pipe);
-
-        public abstract bool TryGetChannel(out IChannelConnection<Message> channel);
     }
 }

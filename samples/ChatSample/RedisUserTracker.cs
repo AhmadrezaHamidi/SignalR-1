@@ -1,4 +1,4 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
@@ -78,7 +78,7 @@ namespace ChatSample
             return new UserDetails(user.Substring(0, pos), user.Substring(pos + 1));
         }
 
-        public async Task AddUser(Connection connection, UserDetails userDetails)
+        public async Task AddUser(ConnectionContext connection, UserDetails userDetails)
         {
             var database = _redisConnection.GetDatabase(_redisDatabase);
             var user = $"{connection.ConnectionId}|{connection.User.Identity.Name}";
@@ -88,7 +88,7 @@ namespace ChatSample
             _ = _redisSubscriber.PublishAsync(_redisChannel, "+" + user);
         }
 
-        public async Task RemoveUser(Connection connection)
+        public async Task RemoveUser(ConnectionContext connection)
         {
             var database = _redisConnection.GetDatabase(_redisDatabase);
             var user = $"{connection.ConnectionId}|{connection.User.Identity.Name}";

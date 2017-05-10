@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR.Features;
 using Microsoft.AspNetCore.SignalR.Internal.Protocol;
 using Microsoft.AspNetCore.Sockets;
+using Microsoft.AspNetCore.Sockets.Features;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -131,7 +132,9 @@ namespace Microsoft.AspNetCore.SignalR.Redis
 
         public override Task OnConnectedAsync(ConnectionContext connection)
         {
-            var redisSubscriptions = connection.Metadata.GetOrAdd(RedisSubscriptionsMetadataName, _ => new HashSet<string>());
+            var redisSubscriptions = new HashSet<string>();
+            connection.Items[RedisSubscriptionsMetadataName] = redisSubscriptions;
+
             var connectionTask = Task.CompletedTask;
             var userTask = Task.CompletedTask;
 
@@ -180,7 +183,7 @@ namespace Microsoft.AspNetCore.SignalR.Redis
 
             var tasks = new List<Task>();
 
-            var redisSubscriptions = connection.Metadata.Get<HashSet<string>>(RedisSubscriptionsMetadataName);
+            var redisSubscriptions = (HashSet<string>)connection.Items[RedisSubscriptionsMetadataName];
             if (redisSubscriptions != null)
             {
                 foreach (var subscription in redisSubscriptions)
@@ -190,16 +193,11 @@ namespace Microsoft.AspNetCore.SignalR.Redis
                 }
             }
 
-            var groupNames = connection.Metadata.Get<HashSet<string>>(HubConnectionMetadataNames.Groups);
-
-            if (groupNames != null)
+            // Copy the groups to an array here because they get removed from this collection
+            // in RemoveGroupAsync
+            foreach (var group in connection.GetGroups())
             {
-                // Copy the groups to an array here because they get removed from this collection
-                // in RemoveGroupAsync
-                foreach (var group in groupNames.ToArray())
-                {
-                    tasks.Add(RemoveGroupAsync(connection, group));
-                }
+                tasks.Add(RemoveGroupAsync(connection, group));
             }
 
             return Task.WhenAll(tasks);
@@ -293,7 +291,7 @@ namespace Microsoft.AspNetCore.SignalR.Redis
             var payload = await protocol.WriteToArrayAsync(hubMessage);
             var message = new Message(payload, protocol.MessageType, endOfMessage: true);
 
-            if(!connection.TryGetChannel(out var channel))
+            if (!connection.TryGetChannel(out var channel))
             {
                 throw new InvalidOperationException("Cannot send message, unable to access connection Channel.");
             }

@@ -58,36 +58,6 @@ namespace Microsoft.AspNetCore.Sockets
 
         public override void Abort() => GetOrCreateFeature(_newRequestLifetimeFeature).Abort();
 
-        public override bool TryGetChannel(out IChannelConnection<Message> channel)
-        {
-            var feature = _features.Get<IConnectionChannelFeature>();
-            if(feature != null)
-            {
-                channel = feature.Channel;
-                return true;
-            }
-            else
-            {
-                channel = null;
-                return false;
-            }
-        }
-
-        public override bool TryGetPipe(out IPipeConnection pipe)
-        {
-            var feature = _features.Get<IConnectionPipeFeature>();
-            if(feature != null)
-            {
-                pipe = feature.Pipe;
-                return true;
-            }
-            else
-            {
-                pipe = null;
-                return false;
-            }
-        }
-
         private T GetOrCreateFeature<T>(Func<T> constructor)
         {
             var feature = _features.Get<T>();

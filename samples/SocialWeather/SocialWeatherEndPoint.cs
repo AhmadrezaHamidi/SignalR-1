@@ -1,10 +1,11 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System;
 using System.IO;
-using System.IO.Pipelines;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Sockets;
+using Microsoft.AspNetCore.Sockets.Features;
 using Microsoft.Extensions.Logging;
 
 namespace SocialWeather
@@ -23,21 +24,26 @@ namespace SocialWeather
             _logger = logger;
         }
 
-        public async override Task OnConnectedAsync(Connection connection)
+        public async override Task OnConnectedAsync(ConnectionContext connection)
         {
+            if(!connection.TryGetChannel(out var channel))
+            {
+                throw new InvalidOperationException("Unable to access connection Channel.");
+            }
+
             _lifetimeManager.OnConnectedAsync(connection);
-            await ProcessRequests(connection);
+            await ProcessRequests(connection, channel);
             _lifetimeManager.OnDisconnectedAsync(connection);
         }
 
-        public async Task ProcessRequests(Connection connection)
+        public async Task ProcessRequests(ConnectionContext connection, IChannelConnection<Message> channel)
         {
             var formatter = _formatterResolver.GetFormatter<WeatherReport>(
-                connection.Metadata.Get<string>("formatType"));
+                (string)connection.Items[ConnectionMetadataNames.Format]);
 
-            while (await connection.Transport.Input.WaitToReadAsync())
+            while (await channel.Input.WaitToReadAsync())
             {
-                if (connection.Transport.Input.TryRead(out var message))
+                if (channel.Input.TryRead(out var message))
                 {
                     var stream = new MemoryStream();
                     await stream.WriteAsync(message.Payload, 0, message.Payload.Length);

@@ -20,8 +20,7 @@ namespace ChatSample.Hubs
         {
             if (!Context.User.Identity.IsAuthenticated)
             {
-                Context.Connection.Transport.Output.Complete(new Exception("TODO: Not authenticated"));
-                return;
+                throw new Exception("TODO: Not authenticated");
             }
 
             await Clients.Client(Context.ConnectionId).InvokeAsync("SetUsersOnline", await GetUsersOnline());

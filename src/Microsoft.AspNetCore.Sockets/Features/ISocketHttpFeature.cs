@@ -14,5 +14,10 @@ namespace Microsoft.AspNetCore.Sockets.Features
         {
             return connectionContext.Features.Get<ISocketHttpFeature>()?.HttpContext;
         }
+
+        public static TransportType? GetTransport(this ConnectionContext connectionContext)
+        {
+            return connectionContext.Features.Get<ISocketHttpFeature>()?.Transport;
+        }
     }
 }

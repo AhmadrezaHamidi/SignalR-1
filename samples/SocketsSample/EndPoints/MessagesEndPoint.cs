@@ -1,11 +1,13 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Sockets;
+using Microsoft.AspNetCore.Sockets.Features;
 
 namespace SocketsSample.EndPoints
 {
@@ -13,18 +15,24 @@ namespace SocketsSample.EndPoints
     {
         public ConnectionList Connections { get; } = new ConnectionList();
 
-        public override async Task OnConnectedAsync(Connection connection)
+        public override async Task OnConnectedAsync(ConnectionContext connection)
         {
+            if (!connection.TryGetChannel(out var channel))
+            {
+                throw new InvalidOperationException("Unable to access connection Channel.");
+            }
+
             Connections.Add(connection);
 
-            await Broadcast($"{connection.ConnectionId} connected ({connection.Metadata[ConnectionMetadataNames.Transport]})");
+            var transportName = connection.GetTransport()?.ToString() ?? "<unknown>";
+            await Broadcast($"{connection.ConnectionId} connected ({transportName})");
 
             try
             {
-                while (await connection.Transport.Input.WaitToReadAsync())
+                while (await channel.Input.WaitToReadAsync())
                 {
                     Message message;
-                    if (connection.Transport.Input.TryRead(out message))
+                    if (channel.Input.TryRead(out message))
                     {
                         // We can avoid the copy here but we'll deal with that later
                         var text = Encoding.UTF8.GetString(message.Payload);
@@ -37,7 +45,7 @@ namespace SocketsSample.EndPoints
             {
                 Connections.Remove(connection);
 
-                await Broadcast($"{connection.ConnectionId} disconnected ({connection.Metadata[ConnectionMetadataNames.Transport]})");
+                await Broadcast($"{connection.ConnectionId} disconnected ({transportName})");
             }
         }
 
@@ -52,7 +60,11 @@ namespace SocketsSample.EndPoints
 
             foreach (var c in Connections)
             {
-                tasks.Add(c.Transport.Output.WriteAsync(new Message(
+                if (!c.TryGetChannel(out var channel))
+                {
+                    throw new InvalidOperationException("Unable to access connection Channel.");
+                }
+                tasks.Add(channel.Output.WriteAsync(new Message(
                     payload,
                     format,
                     endOfMessage)));
