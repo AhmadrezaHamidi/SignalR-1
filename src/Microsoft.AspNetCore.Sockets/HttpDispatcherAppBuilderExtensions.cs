@@ -37,12 +37,15 @@ namespace Microsoft.AspNetCore.Builder
             _dispatcher = dispatcher;
         }
 
-        public void MapSocket(string path, Action<ISocketBuilder> socketConfig)
+        public void MapSocket(string path, Action<ISocketBuilder> socketConfig) =>
+            MapSocket(path, new HttpSocketOptions(), socketConfig);
+
+        public void MapSocket(string path, HttpSocketOptions options, Action<ISocketBuilder> socketConfig)
         {
             var socketBuilder = new SocketBuilder(_routes.ServiceProvider);
             socketConfig(socketBuilder);
             var socket = socketBuilder.Build();
-            _routes.AddPrefixRoute(path, new RouteHandler(c => _dispatcher.ExecuteAsync(path, c, socket)));
+            _routes.AddPrefixRoute(path, new RouteHandler(c => _dispatcher.ExecuteAsync(path, c, options, socket)));
         }
     }
 }

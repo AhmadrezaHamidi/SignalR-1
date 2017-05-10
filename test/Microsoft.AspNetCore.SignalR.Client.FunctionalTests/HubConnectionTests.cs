@@ -1,4 +1,4 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
@@ -35,9 +35,12 @@ namespace Microsoft.AspNetCore.SignalR.Client.FunctionalTests
                 })
                 .Configure(app =>
                 {
-                    app.UseSignalR(routes =>
+                    app.UseSockets(routes =>
                     {
-                        routes.MapHub<TestHub>("/hubs");
+                        routes.MapSocket("/hubs", socket =>
+                        {
+                            socket.UseHub<TestHub>();
+                        });
                     });
                 });
             _testServer = new TestServer(webHostBuilder);

@@ -1,13 +1,12 @@
 using System;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Sockets.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.AspNetCore.Sockets
 {
     public static class SocketBuilderExtensions
     {
-        public static ISocketBuilder Use(this ISocketBuilder socketBuilder, Func<Connection, Func<Task>, Task> middleware)
+        public static ISocketBuilder Use(this ISocketBuilder socketBuilder, Func<ConnectionContext, Func<Task>, Task> middleware)
         {
             return socketBuilder.Use(next =>
             {

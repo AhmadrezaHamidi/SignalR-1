@@ -1,12 +1,15 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Channels;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Sockets.Features;
 using Microsoft.AspNetCore.Sockets.Internal;
 using Microsoft.Extensions.Logging;
 
@@ -56,9 +59,27 @@ namespace Microsoft.AspNetCore.Sockets
             var transportSide = new ChannelConnection<Message>(applicationToTransport, transportToApplication);
             var applicationSide = new ChannelConnection<Message>(transportToApplication, applicationToTransport);
 
+            var connection = new DefaultConnectionContext();
+
+            var connectionFeature = new HttpConnectionFeature()
+            {
+                ConnectionId = id,
+
+                // TODO(anurse): Figure out how to flow this data properly
+                LocalIpAddress = IPAddress.Any,
+                LocalPort = 0,
+                RemoteIpAddress = IPAddress.Any,
+                RemotePort = 0
+            };
+            connection.Features.Set<IHttpConnectionFeature>(connectionFeature);
+
+            var channelFeature = new ConnectionChannelFeature(applicationSide);
+            connection.Features.Set<IConnectionChannelFeature>(channelFeature);
+
             var state = new ConnectionState(
-                new Connection(id, applicationSide),
-                transportSide);
+                connection,
+                transportSide,
+                applicationSide);
 
             _connections.TryAdd(id, state);
             return state;

@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Logging.Testing;
 using Xunit.Abstractions;
+using Microsoft.AspNetCore.Sockets;
 
 namespace Microsoft.AspNetCore.SignalR.Tests
 {
@@ -46,7 +47,13 @@ namespace Microsoft.AspNetCore.SignalR.Tests
 
             public void Configure(IApplicationBuilder app, IHostingEnvironment env)
             {
-                app.UseSockets(options => options.MapEndpoint<EchoEndPoint>("/echo"));
+                app.UseSockets(routes =>
+                {
+                    routes.MapSocket("/echo", socket =>
+                    {
+                        socket.UseEndPoint<EchoEndPoint>();
+                    });
+                });
             }
         }
 

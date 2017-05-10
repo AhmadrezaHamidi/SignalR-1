@@ -2,11 +2,10 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Sockets;
+using Microsoft.AspNetCore.Sockets.Features;
 
 namespace SocialWeather
 {
@@ -20,13 +19,13 @@ namespace SocialWeather
             _formatterResolver = formatterResolver;
         }
 
-        public void OnConnectedAsync(Connection connection)
+        public void OnConnectedAsync(ConnectionContext connection)
         {
-            connection.Metadata[ConnectionMetadataNames.Format] = "json";
+            connection.Items[ConnectionMetadataNames.Format] = "json";
             _connectionList.Add(connection);
         }
 
-        public void OnDisconnectedAsync(Connection connection)
+        public void OnDisconnectedAsync(ConnectionContext connection)
         {
             _connectionList.Remove(connection);
         }
@@ -35,17 +34,22 @@ namespace SocialWeather
         {
             foreach (var connection in _connectionList)
             {
-                var formatter = _formatterResolver.GetFormatter<T>(connection.Metadata.Get<string>(ConnectionMetadataNames.Format));
-                var ms = new MemoryStream();
-                await formatter.WriteAsync(data, ms);
-
-                var context = (HttpContext)connection.Metadata[ConnectionMetadataNames.HttpContext];
+                var context = connection.GetHttpContext();
                 var format =
                     string.Equals(context.Request.Query["format"], "binary", StringComparison.OrdinalIgnoreCase)
                         ? MessageType.Binary
                         : MessageType.Text;
 
-                connection.Transport.Output.TryWrite(new Message(ms.ToArray(), format, endOfMessage: true));
+                var formatter = _formatterResolver.GetFormatter<T>((string)connection.Items[ConnectionMetadataNames.Format]);
+                var ms = new MemoryStream();
+                await formatter.WriteAsync(data, ms);
+
+                if (!connection.TryGetChannel(out var channel))
+                {
+                    throw new InvalidOperationException("Cannot send message, unable to access connection Channel.");
+                }
+
+                channel.Output.TryWrite(new Message(ms.ToArray(), format, endOfMessage: true));
             }
         }
 
@@ -64,25 +68,14 @@ namespace SocialWeather
             throw new NotImplementedException();
         }
 
-        public void AddGroupAsync(Connection connection, string groupName)
+        public void AddGroupAsync(ConnectionContext connection, string groupName)
         {
-            var groups = connection.Metadata.GetOrAdd("groups", _ => new HashSet<string>());
-            lock (groups)
-            {
-                groups.Add(groupName);
-            }
+            connection.AddGroup(groupName);
         }
 
-        public void RemoveGroupAsync(Connection connection, string groupName)
+        public void RemoveGroupAsync(ConnectionContext connection, string groupName)
         {
-            var groups = connection.Metadata.Get<HashSet<string>>("groups");
-            if (groups != null)
-            {
-                lock (groups)
-                {
-                    groups.Remove(groupName);
-                }
-            }
+            connection.RemoveGroup(groupName);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
@@ -14,8 +14,9 @@ namespace Microsoft.AspNetCore.Sockets.Internal
         // on the same task
         private TaskCompletionSource<object> _disposeTcs = new TaskCompletionSource<object>();
 
-        public Connection Connection { get; set; }
+        public ConnectionContext Connection { get; set; }
         public IChannelConnection<Message> Application { get; }
+        public IChannelConnection<Message> Transport { get; }
 
         public CancellationTokenSource Cancellation { get; set; }
 
@@ -29,10 +30,11 @@ namespace Microsoft.AspNetCore.Sockets.Internal
         public DateTime LastSeenUtc { get; set; }
         public ConnectionStatus Status { get; set; } = ConnectionStatus.Inactive;
 
-        public ConnectionState(Connection connection, IChannelConnection<Message> application)
+        public ConnectionState(ConnectionContext connection, IChannelConnection<Message> application, IChannelConnection<Message> transport)
         {
             Connection = connection;
             Application = application;
+            Transport = transport;
             LastSeenUtc = DateTime.UtcNow;
         }
 
@@ -57,7 +59,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal
                     // If the application task is faulted, propagate the error to the transport
                     if (ApplicationTask?.IsFaulted == true)
                     {
-                        Connection.Transport.Output.TryComplete(ApplicationTask.Exception.InnerException);
+                        Transport.Output.TryComplete(ApplicationTask.Exception.InnerException);
                     }
 
                     // If the transport task is faulted, propagate the error to the application
@@ -67,6 +69,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal
                     }
 
                     Application.Dispose();
+                    Transport.Dispose();
 
                     var applicationTask = ApplicationTask ?? Task.CompletedTask;
                     var transportTask = TransportTask ?? Task.CompletedTask;

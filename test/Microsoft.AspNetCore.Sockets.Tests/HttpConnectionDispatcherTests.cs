@@ -1,4 +1,4 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
@@ -827,11 +827,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
         {
             var context = new DefaultHttpContext();
             var services = new ServiceCollection();
-            services.AddEndPoint<TEndPoint>(o =>
-            {
-                // Make the close timeout less than the default for OrTimeout() test helper
-                o.WebSockets.CloseTimeout = TimeSpan.FromSeconds(1);
-            });
+            services.AddEndPoint<TEndPoint>();
 
             services.AddOptions();
             context.RequestServices = services.BuildServiceProvider();
@@ -873,7 +869,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
     public class NerverEndingEndPoint : EndPoint
     {
-        public override Task OnConnectedAsync(Connection connection)
+        public override Task OnConnectedAsync(ConnectionContext connection)
         {
             var tcs = new TaskCompletionSource<object>();
             return tcs.Task;
@@ -882,16 +878,21 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
     public class BlockingEndPoint : EndPoint
     {
-        public override Task OnConnectedAsync(Connection connection)
+        public override Task OnConnectedAsync(ConnectionContext connection)
         {
-            connection.Transport.Input.WaitToReadAsync().Wait();
+            if(!connection.TryGetChannel(out var channel))
+            {
+                throw new InvalidOperationException("This requires a connection with a channel");
+            }
+
+            channel.Input.WaitToReadAsync().Wait();
             return Task.CompletedTask;
         }
     }
 
     public class SynchronusExceptionEndPoint : EndPoint
     {
-        public override Task OnConnectedAsync(Connection connection)
+        public override Task OnConnectedAsync(ConnectionContext connection)
         {
             throw new InvalidOperationException();
         }
@@ -899,7 +900,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
     public class ImmediatelyCompleteEndPoint : EndPoint
     {
-        public override Task OnConnectedAsync(Connection connection)
+        public override Task OnConnectedAsync(ConnectionContext connection)
         {
             return Task.CompletedTask;
         }
@@ -907,9 +908,14 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
     public class TestEndPoint : EndPoint
     {
-        public override async Task OnConnectedAsync(Connection connection)
+        public override async Task OnConnectedAsync(ConnectionContext connection)
         {
-            while (await connection.Transport.Input.WaitToReadAsync())
+            if(!connection.TryGetChannel(out var channel))
+            {
+                throw new InvalidOperationException("This requires a connection with a channel");
+            }
+
+            while (await channel.Input.WaitToReadAsync())
             {
             }
         }

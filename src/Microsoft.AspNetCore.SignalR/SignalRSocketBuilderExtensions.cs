@@ -10,7 +10,7 @@ namespace Microsoft.AspNetCore.Builder
 {
     public static class SignalRSocketBuilderExtensions
     {
-        public static ISocketBuilder UseHub<THub>(this ISocketBuilder socketBuilder) where THub : Hub
+        public static ISocketBuilder UseHub<THub>(this ISocketBuilder socketBuilder) where THub : Hub<IClientProxy>
         {
             return socketBuilder.UseEndPoint<HubEndPoint<THub>>();
         }

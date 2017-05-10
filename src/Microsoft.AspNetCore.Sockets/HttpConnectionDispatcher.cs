@@ -10,7 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Sockets.Abstractions;
+using Microsoft.AspNetCore.Sockets.Features;
 using Microsoft.AspNetCore.Sockets.Internal;
 using Microsoft.AspNetCore.Sockets.Internal.Formatters;
 using Microsoft.AspNetCore.Sockets.Transports;
@@ -32,14 +32,13 @@ namespace Microsoft.AspNetCore.Sockets
             _logger = _loggerFactory.CreateLogger<HttpConnectionDispatcher>();
         }
 
-        public async Task ExecuteAsync(string path, HttpContext context, SocketDelegate socket)
+        public async Task ExecuteAsync(string path, HttpContext context, HttpSocketOptions options, SocketDelegate socket)
         {
-            //var options = context.RequestServices.GetRequiredService<IOptions<EndPointOptions<TEndPoint>>>().Value;
             // TODO: Authorize attribute on EndPoint
-            //if (!await AuthorizeHelper.AuthorizeAsync(context, options.AuthorizationPolicyNames))
-            //{
-            //    return;
-            //}
+            if (!await AuthorizeHelper.AuthorizeAsync(context, options.AuthorizationPolicyNames))
+            {
+                return;
+            }
 
             if (context.Request.Path.StartsWithSegments(path + "/negotiate"))
             {
@@ -52,13 +51,13 @@ namespace Microsoft.AspNetCore.Sockets
             else
             {
                 // Get the end point mapped to this http connection
-                await ExecuteSocketAsync(path, context, socket);
+                await ExecuteSocketAsync(path, context, options, socket);
             }
         }
 
-        private async Task ExecuteSocketAsync(string path, HttpContext context, SocketDelegate socket)
+        private async Task ExecuteSocketAsync(string path, HttpContext context, HttpSocketOptions options, SocketDelegate socket)
         {
-            var supportedTransports = TransportType.All; // options.Transports;
+            var supportedTransports = options.Transports;
 
             // Server sent events transport
             if (context.Request.Path.StartsWithSegments(path + "/sse"))
@@ -165,9 +164,7 @@ namespace Microsoft.AspNetCore.Sockets
                     {
                         _logger.LogDebug("Establishing new connection: {connectionId} on {requestId}", state.Connection.ConnectionId, state.RequestId);
 
-                        state.Connection.Metadata[ConnectionMetadataNames.Transport] = TransportType.LongPolling;
-
-                        state.ApplicationTask = ExecuteSocket(socket, state.Connection);
+                        state.ApplicationTask = ExecuteSocket(socket, state);
                     }
                     else
                     {
@@ -230,10 +227,10 @@ namespace Microsoft.AspNetCore.Sockets
         private ConnectionState CreateConnection(HttpContext context)
         {
             var state = _manager.CreateConnection();
-            var format = (string)context.Request.Query[ConnectionMetadataNames.Format];
+
+            // Copy some HTTPisms to the ConnectionContext
             state.Connection.User = context.User;
-            state.Connection.Metadata[ConnectionMetadataNames.HttpContext] = context;
-            state.Connection.Metadata[ConnectionMetadataNames.Format] = string.IsNullOrEmpty(format) ? "json" : format;
+
             return state;
         }
 
@@ -272,7 +269,7 @@ namespace Microsoft.AspNetCore.Sockets
                 state.RequestId = context.TraceIdentifier;
 
                 // Call into the end point passing the connection
-                state.ApplicationTask = ExecuteSocket(socket, state.Connection);
+                state.ApplicationTask = ExecuteSocket(socket, state);
 
                 // Start the transport
                 state.TransportTask = transport.ProcessRequestAsync(context, context.RequestAborted);
@@ -288,13 +285,13 @@ namespace Microsoft.AspNetCore.Sockets
             await _manager.DisposeAndRemoveAsync(state);
         }
 
-        private async Task ExecuteSocket(SocketDelegate socket, Connection connection)
+        private async Task ExecuteSocket(SocketDelegate socket, ConnectionState state)
         {
             // Jump onto the thread pool thread so blocking user code doesn't block the setup of the
             // connection and transport
             await AwaitableThreadPool.Yield();
 
-            await socket(connection);
+            await socket(state.Connection);
         }
 
         private Task ProcessNegotiate(HttpContext context)
@@ -373,17 +370,21 @@ namespace Microsoft.AspNetCore.Sockets
 
             connectionState.Connection.User = context.User;
 
-            var transport = connectionState.Connection.Metadata.Get<TransportType?>(ConnectionMetadataNames.Transport);
-
-            if (transport == null)
+            var httpFeature = connectionState.Connection.Features.Get<ISocketHttpFeature>();
+            if (httpFeature == null)
             {
-                connectionState.Connection.Metadata[ConnectionMetadataNames.Transport] = transportType;
+                httpFeature = new SocketHttpFeature(context, transportType);
+                connectionState.Connection.Features.Set<ISocketHttpFeature>(httpFeature);
             }
-            else if (transport != transportType)
+            else
             {
-                context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                await context.Response.WriteAsync("Cannot change transports mid-connection");
-                return false;
+                // Already have the http feature, which means the transport must be the same
+                if (httpFeature.Transport != transportType)
+                {
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    await context.Response.WriteAsync("Cannot change transports mid-connection");
+                    return false;
+                }
             }
             return true;
         }

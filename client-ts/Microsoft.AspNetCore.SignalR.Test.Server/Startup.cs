@@ -29,10 +29,7 @@ namespace Microsoft.AspNetCore.SignalR.Test.Server
             app.UseSockets(routes =>
             {
                 routes.MapSocket("/echo", socket => socket.UseEndPoint<EchoEndPoint>());
-            });
-            app.UseSignalR(routes =>
-            {
-                routes.MapHub<TestHub>("/testhub");
+                routes.MapSocket("/testhub", socket => socket.UseHub<TestHub>());
             });
         }
     }

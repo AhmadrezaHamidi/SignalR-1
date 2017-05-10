@@ -1,12 +1,14 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR.Features;
 using Microsoft.AspNetCore.SignalR.Internal.Protocol;
 using Microsoft.AspNetCore.Sockets;
+using Microsoft.AspNetCore.Sockets.Features;
 
 namespace Microsoft.AspNetCore.SignalR
 {
@@ -15,32 +17,15 @@ namespace Microsoft.AspNetCore.SignalR
         private long _nextInvocationId = 0;
         private readonly ConnectionList _connections = new ConnectionList();
 
-        public override Task AddGroupAsync(Connection connection, string groupName)
+        public override Task AddGroupAsync(ConnectionContext connection, string groupName)
         {
-            var groups = connection.Metadata.GetOrAdd(HubConnectionMetadataNames.Groups, _ => new HashSet<string>());
-
-            lock (groups)
-            {
-                groups.Add(groupName);
-            }
-
+            connection.AddGroup(groupName);
             return Task.CompletedTask;
         }
 
-        public override Task RemoveGroupAsync(Connection connection, string groupName)
+        public override Task RemoveGroupAsync(ConnectionContext connection, string groupName)
         {
-            var groups = connection.Metadata.Get<HashSet<string>>(HubConnectionMetadataNames.Groups);
-
-            if (groups == null)
-            {
-                return Task.CompletedTask;
-            }
-
-            lock (groups)
-            {
-                groups.Remove(groupName);
-            }
-
+            connection.RemoveGroup(groupName);
             return Task.CompletedTask;
         }
 
@@ -49,7 +34,7 @@ namespace Microsoft.AspNetCore.SignalR
             return InvokeAllWhere(methodName, args, c => true);
         }
 
-        private Task InvokeAllWhere(string methodName, object[] args, Func<Connection, bool> include)
+        private Task InvokeAllWhere(string methodName, object[] args, Func<ConnectionContext, bool> include)
         {
             var tasks = new List<Task>(_connections.Count);
             var message = new InvocationMessage(GetInvocationId(), nonBlocking: true, target: methodName, arguments: args);
@@ -81,8 +66,7 @@ namespace Microsoft.AspNetCore.SignalR
         {
             return InvokeAllWhere(methodName, args, connection =>
             {
-                var groups = connection.Metadata.Get<HashSet<string>>(HubConnectionMetadataNames.Groups);
-                return groups?.Contains(groupName) == true;
+                return connection.IsInGroup(groupName);
             });
         }
 
@@ -94,27 +78,33 @@ namespace Microsoft.AspNetCore.SignalR
             });
         }
 
-        public override Task OnConnectedAsync(Connection connection)
+        public override Task OnConnectedAsync(ConnectionContext connection)
         {
             _connections.Add(connection);
             return Task.CompletedTask;
         }
 
-        public override Task OnDisconnectedAsync(Connection connection)
+        public override Task OnDisconnectedAsync(ConnectionContext connection)
         {
             _connections.Remove(connection);
             return Task.CompletedTask;
         }
 
-        private async Task WriteAsync(Connection connection, HubMessage hubMessage)
+        private async Task WriteAsync(ConnectionContext connection, HubMessage hubMessage)
         {
-            var protocol = connection.Metadata.Get<IHubProtocol>(HubConnectionMetadataNames.HubProtocol);
+            var protocolFeature = connection.Features.Get<IHubProtocolFeature>();
+            var protocol = protocolFeature.HubProtocol;
             var payload = await protocol.WriteToArrayAsync(hubMessage);
             var message = new Message(payload, protocol.MessageType, endOfMessage: true);
 
-            while (await connection.Transport.Output.WaitToWriteAsync())
+            if(!connection.TryGetChannel(out var channel))
             {
-                if (connection.Transport.Output.TryWrite(message))
+                throw new InvalidOperationException("Cannot send message, unable to access connection Channel.");
+            }
+
+            while (await channel.Output.WaitToWriteAsync())
+            {
+                if (channel.Output.TryWrite(message))
                 {
                     break;
                 }

@@ -16,8 +16,6 @@ namespace SocketsSample
         // For more information on how to configure your application, visit http://go.microsoft.com/fwlink/?LinkID=398940
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddSockets();
-
             services.AddSignalR();
             // .AddRedis();
 
@@ -34,13 +32,13 @@ namespace SocketsSample
                 app.UseDeveloperExceptionPage();
             }
 
-            app.UseSignalR(routes =>
-            {
-                routes.MapHub<Chat>("/hubs");
-            });
-
             app.UseSockets(routes =>
             {
+                routes.MapSocket("/hubs", socket =>
+                {
+                    socket.UseHub<Chat>();
+                });
+
                 routes.MapSocket("/chat", socket =>
                 {
                     socket.UseEndPoint<MessagesEndPoint>();

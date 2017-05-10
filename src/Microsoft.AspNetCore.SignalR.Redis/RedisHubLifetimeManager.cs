@@ -1,4 +1,4 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.SignalR.Features;
 using Microsoft.AspNetCore.SignalR.Internal.Protocol;
 using Microsoft.AspNetCore.Sockets;
 using Microsoft.Extensions.Logging;
@@ -128,7 +129,7 @@ namespace Microsoft.AspNetCore.SignalR.Redis
             await _bus.PublishAsync(channel, payload);
         }
 
-        public override Task OnConnectedAsync(Connection connection)
+        public override Task OnConnectedAsync(ConnectionContext connection)
         {
             var redisSubscriptions = connection.Metadata.GetOrAdd(RedisSubscriptionsMetadataName, _ => new HashSet<string>());
             var connectionTask = Task.CompletedTask;
@@ -173,7 +174,7 @@ namespace Microsoft.AspNetCore.SignalR.Redis
             return Task.WhenAll(connectionTask, userTask);
         }
 
-        public override Task OnDisconnectedAsync(Connection connection)
+        public override Task OnDisconnectedAsync(ConnectionContext connection)
         {
             _connections.Remove(connection);
 
@@ -204,16 +205,11 @@ namespace Microsoft.AspNetCore.SignalR.Redis
             return Task.WhenAll(tasks);
         }
 
-        public override async Task AddGroupAsync(Connection connection, string groupName)
+        public override async Task AddGroupAsync(ConnectionContext connection, string groupName)
         {
             var groupChannel = typeof(THub).FullName + ".group." + groupName;
 
-            var groupNames = connection.Metadata.GetOrAdd(HubConnectionMetadataNames.Groups, _ => new HashSet<string>());
-
-            lock (groupNames)
-            {
-                groupNames.Add(groupName);
-            }
+            connection.AddGroup(groupName);
 
             var group = _groups.GetOrAdd(groupChannel, _ => new GroupData());
 
@@ -255,7 +251,7 @@ namespace Microsoft.AspNetCore.SignalR.Redis
             }
         }
 
-        public override async Task RemoveGroupAsync(Connection connection, string groupName)
+        public override async Task RemoveGroupAsync(ConnectionContext connection, string groupName)
         {
             var groupChannel = typeof(THub).FullName + ".group." + groupName;
 
@@ -265,14 +261,7 @@ namespace Microsoft.AspNetCore.SignalR.Redis
                 return;
             }
 
-            var groupNames = connection.Metadata.Get<HashSet<string>>(HubConnectionMetadataNames.Groups);
-            if (groupNames != null)
-            {
-                lock (groupNames)
-                {
-                    groupNames.Remove(groupName);
-                }
-            }
+            connection.RemoveGroup(groupName);
 
             await group.Lock.WaitAsync();
             try
@@ -297,15 +286,21 @@ namespace Microsoft.AspNetCore.SignalR.Redis
             _redisServerConnection.Dispose();
         }
 
-        private async Task WriteAsync(Connection connection, HubMessage hubMessage)
+        private async Task WriteAsync(ConnectionContext connection, HubMessage hubMessage)
         {
-            var protocol = connection.Metadata.Get<IHubProtocol>(HubConnectionMetadataNames.HubProtocol);
-            var data = await protocol.WriteToArrayAsync(hubMessage);
-            var message = new Message(data, protocol.MessageType, endOfMessage: true);
+            var protocolFeature = connection.Features.Get<IHubProtocolFeature>();
+            var protocol = protocolFeature.HubProtocol;
+            var payload = await protocol.WriteToArrayAsync(hubMessage);
+            var message = new Message(payload, protocol.MessageType, endOfMessage: true);
 
-            while (await connection.Transport.Output.WaitToWriteAsync())
+            if(!connection.TryGetChannel(out var channel))
             {
-                if (connection.Transport.Output.TryWrite(message))
+                throw new InvalidOperationException("Cannot send message, unable to access connection Channel.");
+            }
+
+            while (await channel.Output.WaitToWriteAsync())
+            {
+                if (channel.Output.TryWrite(message))
                 {
                     break;
                 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
@@ -11,8 +11,8 @@ namespace ChatSample
     public interface IUserTracker<out THub>
     {
         Task<IEnumerable<UserDetails>> UsersOnline();
-        Task AddUser(Connection connection, UserDetails userDetails);
-        Task RemoveUser(Connection connection);
+        Task AddUser(ConnectionContext connection, UserDetails userDetails);
+        Task RemoveUser(ConnectionContext connection);
 
         event Action<UserDetails> UserJoined;
         event Action<UserDetails> UserLeft;

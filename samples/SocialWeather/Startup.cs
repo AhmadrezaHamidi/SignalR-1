@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SocialWeather.Json;
@@ -32,7 +33,13 @@ namespace SocialWeather
                 app.UseDeveloperExceptionPage();
             }
 
-            app.UseSockets(o => { o.MapEndpoint<SocialWeatherEndPoint>("/weather"); });
+            app.UseSockets(routes =>
+            {
+                routes.MapSocket("/weather", socket =>
+                {
+                    socket.UseEndPoint<SocialWeatherEndPoint>();
+                });
+            });
             app.UseFileServer();
 
             var formatterResolver = app.ApplicationServices.GetRequiredService<FormatterResolver>();
