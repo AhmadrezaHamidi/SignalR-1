@@ -101,7 +101,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
                 context.RequestServices = services.BuildServiceProvider();
                 context.Request.Path = path;
 
-                await dispatcher.ExecuteAsync<TestEndPoint>("", context);
+                await dispatcher.ExecuteAsync("", context, CreateSocket<TestEndPoint>());
 
                 Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
                 await strm.FlushAsync();
@@ -354,7 +354,11 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var buffer = Encoding.UTF8.GetBytes("Hello World");
 
             // Write to the transport so the poll yields
-            await state.Connection.Transport.Output.WriteAsync(new Message(buffer, MessageType.Text, endOfMessage: true));
+            if (!state.Connection.TryGetChannel(out var channel))
+            {
+                throw new InvalidOperationException("Unable to access connection Channel");
+            }
+            await channel.Output.WriteAsync(new Message(buffer, MessageType.Text, endOfMessage: true));
 
             await task;
 
@@ -431,7 +435,11 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             await task1.OrTimeout();
 
             // Send a message from the app to complete Task 2
-            await state.Connection.Transport.Output.WriteAsync(new Message(Encoding.UTF8.GetBytes("Hello, World"), MessageType.Text));
+            if (!state.Connection.TryGetChannel(out var channel))
+            {
+                throw new InvalidOperationException("Unable to access connection Channel");
+            }
+            await channel.Output.WriteAsync(new Message(Encoding.UTF8.GetBytes("Hello, World"), MessageType.Text));
 
             await task2.OrTimeout();
 
@@ -487,13 +495,10 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var context = new DefaultHttpContext();
             var services = new ServiceCollection();
             services.AddOptions();
-            services.AddEndPoint<BlockingEndPoint>(options =>
+            services.AddEndPoint<BlockingEndPoint>();
+            services.AddAuthorization(authOptions =>
             {
-                options.AuthorizationPolicyNames.Add("test");
-            });
-            services.AddAuthorization(options =>
-            {
-                options.AddPolicy("test", policy => policy.RequireClaim(ClaimTypes.NameIdentifier));
+                authOptions.AddPolicy("test", policy => policy.RequireClaim(ClaimTypes.NameIdentifier));
             });
             services.AddLogging();
 
@@ -508,7 +513,9 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             context.Features.Set<IHttpAuthenticationFeature>(authFeature);
 
             // would hang if EndPoint was running
-            await dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>()).OrTimeout();
+            var options = new HttpSocketOptions();
+            options.AuthorizationPolicyNames.Add("test");
+            await dispatcher.ExecuteAsync("", context, options, CreateSocket<BlockingEndPoint>()).OrTimeout();
 
             Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
         }
@@ -522,13 +529,10 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var context = new DefaultHttpContext();
             var services = new ServiceCollection();
             services.AddOptions();
-            services.AddEndPoint<BlockingEndPoint>(options =>
+            services.AddEndPoint<BlockingEndPoint>();
+            services.AddAuthorization(authOptions =>
             {
-                options.AuthorizationPolicyNames.Add("test");
-            });
-            services.AddAuthorization(options =>
-            {
-                options.AddPolicy("test", policy =>
+                authOptions.AddPolicy("test", policy =>
                 {
                     policy.RequireClaim(ClaimTypes.NameIdentifier);
                 });
@@ -549,8 +553,15 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             // "authorize" user
             context.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, "name") }));
 
-            var endPointTask = dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>());
-            await state.Connection.Transport.Output.WriteAsync(new Message(Encoding.UTF8.GetBytes("Hello, World"), MessageType.Text)).OrTimeout();
+            var options = new HttpSocketOptions();
+            options.AuthorizationPolicyNames.Add("test");
+            var endPointTask = dispatcher.ExecuteAsync("", context, options, CreateSocket<BlockingEndPoint>());
+
+            if(!state.Connection.TryGetChannel(out var channel))
+            {
+                throw new InvalidOperationException("Unable to access connection Channel.");
+            }
+            await channel.Output.WriteAsync(new Message(Encoding.UTF8.GetBytes("Hello, World"), MessageType.Text)).OrTimeout();
 
             await endPointTask.OrTimeout();
 
@@ -567,15 +578,11 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var context = new DefaultHttpContext();
             var services = new ServiceCollection();
             services.AddOptions();
-            services.AddEndPoint<BlockingEndPoint>(options =>
+            services.AddEndPoint<BlockingEndPoint>();
+            services.AddAuthorization(authOptions =>
             {
-                options.AuthorizationPolicyNames.Add("test");
-                options.AuthorizationPolicyNames.Add("secondPolicy");
-            });
-            services.AddAuthorization(options =>
-            {
-                options.AddPolicy("test", policy => policy.RequireClaim(ClaimTypes.NameIdentifier));
-                options.AddPolicy("secondPolicy", policy => policy.RequireClaim(ClaimTypes.StreetAddress));
+                authOptions.AddPolicy("test", policy => policy.RequireClaim(ClaimTypes.NameIdentifier));
+                authOptions.AddPolicy("secondPolicy", policy => policy.RequireClaim(ClaimTypes.StreetAddress));
             });
             services.AddLogging();
 
@@ -594,15 +601,23 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             context.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, "name") }));
 
             // would hang if EndPoint was running
-            await dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>()).OrTimeout();
+            var options = new HttpSocketOptions();
+            options.AuthorizationPolicyNames.Add("test");
+            options.AuthorizationPolicyNames.Add("secondPolicy");
+            await dispatcher.ExecuteAsync("", context, options, CreateSocket<BlockingEndPoint>()).OrTimeout();
 
             Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
 
             // fully "authorize" user
             context.User.AddIdentity(new ClaimsIdentity(new[] { new Claim(ClaimTypes.StreetAddress, "12345 123rd St. NW") }));
 
-            var endPointTask = dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>());
-            await state.Connection.Transport.Output.WriteAsync(new Message(Encoding.UTF8.GetBytes("Hello, World"), MessageType.Text)).OrTimeout();
+            var endPointTask = dispatcher.ExecuteAsync("", context, options, CreateSocket<BlockingEndPoint>());
+
+            if(!state.Connection.TryGetChannel(out var channel))
+            {
+                throw new InvalidOperationException("Unable to access connection Channel.");
+            }
+            await channel.Output.WriteAsync(new Message(Encoding.UTF8.GetBytes("Hello, World"), MessageType.Text)).OrTimeout();
 
             await endPointTask.OrTimeout();
 
@@ -618,13 +633,10 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var context = new DefaultHttpContext();
             var services = new ServiceCollection();
             services.AddOptions();
-            services.AddEndPoint<BlockingEndPoint>(options =>
+            services.AddEndPoint<BlockingEndPoint>();
+            services.AddAuthorization(authOptions =>
             {
-                options.AuthorizationPolicyNames.Add("test");
-            });
-            services.AddAuthorization(options =>
-            {
-                options.AddPolicy("test", policy =>
+                authOptions.AddPolicy("test", policy =>
                 {
                     policy.RequireClaim(ClaimTypes.NameIdentifier);
                     policy.AddAuthenticationSchemes("Default");
@@ -646,8 +658,15 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             // "authorize" user
             context.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, "name") }));
 
-            var endPointTask = dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>());
-            await state.Connection.Transport.Output.WriteAsync(new Message(Encoding.UTF8.GetBytes("Hello, World"), MessageType.Text)).OrTimeout();
+            var options = new HttpSocketOptions();
+            options.AuthorizationPolicyNames.Add("test");
+            var endPointTask = dispatcher.ExecuteAsync("", context, options, CreateSocket<BlockingEndPoint>());
+
+            if(!state.Connection.TryGetChannel(out var channel))
+            {
+                throw new InvalidOperationException("Unable to access connection Channel.");
+            }
+            await channel.Output.WriteAsync(new Message(Encoding.UTF8.GetBytes("Hello, World"), MessageType.Text)).OrTimeout();
 
             await endPointTask.OrTimeout();
 
@@ -664,13 +683,10 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var context = new DefaultHttpContext();
             var services = new ServiceCollection();
             services.AddOptions();
-            services.AddEndPoint<BlockingEndPoint>(options =>
+            services.AddEndPoint<BlockingEndPoint>();
+            services.AddAuthorization(authOptions =>
             {
-                options.AuthorizationPolicyNames.Add("test");
-            });
-            services.AddAuthorization(options =>
-            {
-                options.AddPolicy("test", policy =>
+                authOptions.AddPolicy("test", policy =>
                 {
                     policy.RequireClaim(ClaimTypes.NameIdentifier);
                     policy.AddAuthenticationSchemes("Default");
@@ -693,7 +709,9 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             context.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, "name") }));
 
             // would block if EndPoint was executed
-            await dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>()).OrTimeout();
+            var options = new HttpSocketOptions();
+            options.AuthorizationPolicyNames.Add("test");
+            await dispatcher.ExecuteAsync("", context, options, CreateSocket<BlockingEndPoint>()).OrTimeout();
 
             Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
         }
@@ -772,10 +790,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
                 context.Response.Body = strm;
                 var services = new ServiceCollection();
                 services.AddOptions();
-                services.AddEndPoint<ImmediatelyCompleteEndPoint>(options =>
-                {
-                    options.Transports = supportedTransports;
-                });
+                services.AddEndPoint<ImmediatelyCompleteEndPoint>();
 
                 context.RequestServices = services.BuildServiceProvider();
                 context.Request.Path = path;
@@ -783,7 +798,11 @@ namespace Microsoft.AspNetCore.Sockets.Tests
                 values["id"] = state.Connection.ConnectionId;
                 var qs = new QueryCollection(values);
                 context.Request.Query = qs;
-                await dispatcher.ExecuteAsync("", context, CreateSocket<ImmediatelyCompleteEndPoint>());
+
+                var options = new HttpSocketOptions();
+                options.Transports = supportedTransports;
+                await dispatcher.ExecuteAsync("", context, options, CreateSocket<ImmediatelyCompleteEndPoint>());
+
                 Assert.Equal(status, context.Response.StatusCode);
                 await strm.FlushAsync();
 
@@ -818,7 +837,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
                 await dispatcher.ExecuteAsync("", context, options, CreateSocket<TestEndPoint>()).OrTimeout();
             }
 
-            if(!state.Connection.TryGetChannel(out var channel))
+            if (!state.Connection.TryGetChannel(out var channel))
             {
                 throw new InvalidOperationException("Unable to access connection Channel");
             }
@@ -874,7 +893,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             }
         }
 
-        private static SocketDelegate CreateSocket<TEndPoint>() where TEndPoint: EndPoint
+        private static SocketDelegate CreateSocket<TEndPoint>() where TEndPoint : EndPoint
         {
             return new SocketBuilder(new ServiceCollection().BuildServiceProvider())
                 .UseEndPoint<TEndPoint>()
@@ -895,7 +914,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
     {
         public override Task OnConnectedAsync(ConnectionContext connection)
         {
-            if(!connection.TryGetChannel(out var channel))
+            if (!connection.TryGetChannel(out var channel))
             {
                 throw new InvalidOperationException("This requires a connection with a channel");
             }
@@ -925,7 +944,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
     {
         public override async Task OnConnectedAsync(ConnectionContext connection)
         {
-            if(!connection.TryGetChannel(out var channel))
+            if (!connection.TryGetChannel(out var channel))
             {
                 throw new InvalidOperationException("This requires a connection with a channel");
             }

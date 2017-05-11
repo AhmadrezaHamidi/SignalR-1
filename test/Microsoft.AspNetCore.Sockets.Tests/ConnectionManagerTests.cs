@@ -25,7 +25,6 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             Assert.Null(state.TransportTask);
             Assert.Null(state.Cancellation);
             Assert.Null(state.RequestId);
-            Assert.NotNull(state.Connection.Transport);
         }
 
         [Fact]
@@ -48,16 +47,12 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var connectionManager = CreateConnectionManager();
             var state = connectionManager.CreateConnection();
 
-            var transport = state.Connection.Transport;
-
             Assert.NotNull(state.Connection);
             Assert.NotNull(state.Connection.ConnectionId);
-            Assert.NotNull(transport);
 
             ConnectionState newState;
             Assert.True(connectionManager.TryGetConnection(state.Connection.ConnectionId, out newState));
             Assert.Same(newState, state);
-            Assert.Same(transport, newState.Connection.Transport);
         }
 
         [Fact]
@@ -66,16 +61,12 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var connectionManager = CreateConnectionManager();
             var state = connectionManager.CreateConnection();
 
-            var transport = state.Connection.Transport;
-
             Assert.NotNull(state.Connection);
             Assert.NotNull(state.Connection.ConnectionId);
-            Assert.NotNull(transport);
 
             ConnectionState newState;
             Assert.True(connectionManager.TryGetConnection(state.Connection.ConnectionId, out newState));
             Assert.Same(newState, state);
-            Assert.Same(transport, newState.Connection.Transport);
 
             connectionManager.RemoveConnection(state.Connection.ConnectionId);
             Assert.False(connectionManager.TryGetConnection(state.Connection.ConnectionId, out newState));
@@ -89,7 +80,11 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
             state.ApplicationTask = Task.Run(async () =>
             {
-                Assert.False(await state.Connection.Transport.Input.WaitToReadAsync());
+                if(!state.Connection.TryGetChannel(out var channel))
+                {
+                    throw new InvalidOperationException("Unable to access communication Channel");
+                }
+                Assert.False(await channel.Input.WaitToReadAsync());
             });
 
             state.TransportTask = Task.Run(async () =>
@@ -175,7 +170,6 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
             Assert.NotNull(state.Connection);
             Assert.NotNull(state.Connection.ConnectionId);
-            Assert.NotNull(state.Connection.Transport);
 
             await state.DisposeAsync();
             Assert.Equal(state.Status, ConnectionState.ConnectionStatus.Disposed);
