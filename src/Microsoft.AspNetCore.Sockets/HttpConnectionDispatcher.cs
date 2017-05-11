@@ -32,6 +32,9 @@ namespace Microsoft.AspNetCore.Sockets
             _logger = _loggerFactory.CreateLogger<HttpConnectionDispatcher>();
         }
 
+        public Task ExecuteAsync(string path, HttpContext context, SocketDelegate socket) =>
+            ExecuteAsync(path, context, new HttpSocketOptions(), socket);
+
         public async Task ExecuteAsync(string path, HttpContext context, HttpSocketOptions options, SocketDelegate socket)
         {
             // TODO: Authorize attribute on EndPoint

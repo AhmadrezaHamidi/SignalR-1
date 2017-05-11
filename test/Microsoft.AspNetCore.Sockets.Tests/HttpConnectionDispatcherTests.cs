@@ -41,7 +41,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var ms = new MemoryStream();
             context.Request.Path = "/negotiate";
             context.Response.Body = ms;
-            await dispatcher.ExecuteAsync<TestEndPoint>("", context);
+            await dispatcher.ExecuteAsync("", context, CreateSocket<TestEndPoint>());
 
             var id = Encoding.UTF8.GetString(ms.ToArray());
 
@@ -75,7 +75,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
                 var qs = new QueryCollection(values);
                 context.Request.Query = qs;
 
-                await dispatcher.ExecuteAsync<TestEndPoint>("", context);
+                await dispatcher.ExecuteAsync("", context, CreateSocket<TestEndPoint>());
 
                 Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
                 await strm.FlushAsync();
@@ -127,7 +127,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
                 context.Request.ContentType = "text/plain";
                 context.Response.Body = strm;
 
-                await dispatcher.ExecuteAsync<TestEndPoint>("", context);
+                await dispatcher.ExecuteAsync("", context, CreateSocket<TestEndPoint>());
 
                 Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
                 await strm.FlushAsync();
@@ -179,7 +179,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
             var context = MakeRequest<ImmediatelyCompleteEndPoint>("/sse", state);
 
-            await dispatcher.ExecuteAsync<ImmediatelyCompleteEndPoint>("", context);
+            await dispatcher.ExecuteAsync("", context, CreateSocket<ImmediatelyCompleteEndPoint>());
 
             Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
 
@@ -198,7 +198,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
             var context = MakeRequest<SynchronusExceptionEndPoint>("/sse", state);
 
-            await dispatcher.ExecuteAsync<SynchronusExceptionEndPoint>("", context);
+            await dispatcher.ExecuteAsync("", context, CreateSocket<SynchronusExceptionEndPoint>());
 
             Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
 
@@ -217,7 +217,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
             var context = MakeRequest<SynchronusExceptionEndPoint>("/poll", state);
 
-            await dispatcher.ExecuteAsync<SynchronusExceptionEndPoint>("", context);
+            await dispatcher.ExecuteAsync("", context, CreateSocket<SynchronusExceptionEndPoint>());
 
             Assert.Equal(StatusCodes.Status204NoContent, context.Response.StatusCode);
 
@@ -236,7 +236,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
             var context = MakeRequest<ImmediatelyCompleteEndPoint>("/poll", state);
 
-            await dispatcher.ExecuteAsync<ImmediatelyCompleteEndPoint>("", context);
+            await dispatcher.ExecuteAsync("", context, CreateSocket<ImmediatelyCompleteEndPoint>());
 
             Assert.Equal(StatusCodes.Status204NoContent, context.Response.StatusCode);
 
@@ -255,7 +255,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
             var context = MakeRequest<ImmediatelyCompleteEndPoint>("/ws", state, isWebSocketRequest: true);
 
-            var task = dispatcher.ExecuteAsync<ImmediatelyCompleteEndPoint>("", context);
+            var task = dispatcher.ExecuteAsync("", context, CreateSocket<ImmediatelyCompleteEndPoint>());
 
             await task.OrTimeout();
         }
@@ -273,9 +273,9 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var context1 = MakeRequest<TestEndPoint>(path, state, isWebSocketRequest: isWebSocketRequest);
             var context2 = MakeRequest<TestEndPoint>(path, state, isWebSocketRequest: isWebSocketRequest);
 
-            var request1 = dispatcher.ExecuteAsync<TestEndPoint>("", context1);
+            var request1 = dispatcher.ExecuteAsync("", context1, CreateSocket<TestEndPoint>());
 
-            await dispatcher.ExecuteAsync<TestEndPoint>("", context2);
+            await dispatcher.ExecuteAsync("", context2, CreateSocket<TestEndPoint>());
 
             Assert.Equal(StatusCodes.Status409Conflict, context2.Response.StatusCode);
 
@@ -306,8 +306,8 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var context1 = MakeRequest<TestEndPoint>("/poll", state);
             var context2 = MakeRequest<TestEndPoint>("/poll", state);
 
-            var request1 = dispatcher.ExecuteAsync<TestEndPoint>("", context1);
-            var request2 = dispatcher.ExecuteAsync<TestEndPoint>("", context2);
+            var request1 = dispatcher.ExecuteAsync("", context1, CreateSocket<TestEndPoint>());
+            var request2 = dispatcher.ExecuteAsync("", context2, CreateSocket<TestEndPoint>());
 
             await request1;
 
@@ -334,7 +334,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
             var context = MakeRequest<TestEndPoint>(path, state);
 
-            await dispatcher.ExecuteAsync<TestEndPoint>("", context);
+            await dispatcher.ExecuteAsync("", context, CreateSocket<TestEndPoint>());
 
             Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
         }
@@ -349,7 +349,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
             var context = MakeRequest<TestEndPoint>("/poll", state);
 
-            var task = dispatcher.ExecuteAsync<TestEndPoint>("", context);
+            var task = dispatcher.ExecuteAsync("", context, CreateSocket<TestEndPoint>());
 
             var buffer = Encoding.UTF8.GetBytes("Hello World");
 
@@ -374,7 +374,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
             var context = MakeRequest<BlockingEndPoint>("/sse", state);
 
-            var task = dispatcher.ExecuteAsync<BlockingEndPoint>("", context);
+            var task = dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>());
 
             var buffer = Encoding.UTF8.GetBytes("Hello World");
 
@@ -399,7 +399,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
 
             var context = MakeRequest<BlockingEndPoint>("/poll", state);
 
-            var task = dispatcher.ExecuteAsync<BlockingEndPoint>("", context);
+            var task = dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>());
 
             var buffer = Encoding.UTF8.GetBytes("Hello World");
 
@@ -423,9 +423,9 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var dispatcher = new HttpConnectionDispatcher(manager, new LoggerFactory());
 
             var context1 = MakeRequest<BlockingEndPoint>("/poll", state);
-            var task1 = dispatcher.ExecuteAsync<BlockingEndPoint>("", context1);
+            var task1 = dispatcher.ExecuteAsync("", context1, CreateSocket<BlockingEndPoint>());
             var context2 = MakeRequest<BlockingEndPoint>("/poll", state);
-            var task2 = dispatcher.ExecuteAsync<BlockingEndPoint>("", context2);
+            var task2 = dispatcher.ExecuteAsync("", context2, CreateSocket<BlockingEndPoint>());
 
             // Task 1 should finish when request 2 arrives
             await task1.OrTimeout();
@@ -508,7 +508,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             context.Features.Set<IHttpAuthenticationFeature>(authFeature);
 
             // would hang if EndPoint was running
-            await dispatcher.ExecuteAsync<BlockingEndPoint>("", context).OrTimeout();
+            await dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>()).OrTimeout();
 
             Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
         }
@@ -549,7 +549,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             // "authorize" user
             context.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, "name") }));
 
-            var endPointTask = dispatcher.ExecuteAsync<BlockingEndPoint>("", context);
+            var endPointTask = dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>());
             await state.Connection.Transport.Output.WriteAsync(new Message(Encoding.UTF8.GetBytes("Hello, World"), MessageType.Text)).OrTimeout();
 
             await endPointTask.OrTimeout();
@@ -594,14 +594,14 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             context.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, "name") }));
 
             // would hang if EndPoint was running
-            await dispatcher.ExecuteAsync<BlockingEndPoint>("", context).OrTimeout();
+            await dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>()).OrTimeout();
 
             Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
 
             // fully "authorize" user
             context.User.AddIdentity(new ClaimsIdentity(new[] { new Claim(ClaimTypes.StreetAddress, "12345 123rd St. NW") }));
 
-            var endPointTask = dispatcher.ExecuteAsync<BlockingEndPoint>("", context);
+            var endPointTask = dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>());
             await state.Connection.Transport.Output.WriteAsync(new Message(Encoding.UTF8.GetBytes("Hello, World"), MessageType.Text)).OrTimeout();
 
             await endPointTask.OrTimeout();
@@ -646,7 +646,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             // "authorize" user
             context.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, "name") }));
 
-            var endPointTask = dispatcher.ExecuteAsync<BlockingEndPoint>("", context);
+            var endPointTask = dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>());
             await state.Connection.Transport.Output.WriteAsync(new Message(Encoding.UTF8.GetBytes("Hello, World"), MessageType.Text)).OrTimeout();
 
             await endPointTask.OrTimeout();
@@ -693,7 +693,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             context.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, "name") }));
 
             // would block if EndPoint was executed
-            await dispatcher.ExecuteAsync<BlockingEndPoint>("", context).OrTimeout();
+            await dispatcher.ExecuteAsync("", context, CreateSocket<BlockingEndPoint>()).OrTimeout();
 
             Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
         }
@@ -783,7 +783,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
                 values["id"] = state.Connection.ConnectionId;
                 var qs = new QueryCollection(values);
                 context.Request.Query = qs;
-                await dispatcher.ExecuteAsync<ImmediatelyCompleteEndPoint>("", context);
+                await dispatcher.ExecuteAsync("", context, CreateSocket<ImmediatelyCompleteEndPoint>());
                 Assert.Equal(status, context.Response.StatusCode);
                 await strm.FlushAsync();
 
@@ -803,10 +803,6 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var options = new HttpSocketOptions();
             options.WebSockets.CloseTimeout = TimeSpan.FromSeconds(1);
 
-            var socket = new SocketBuilder(new ServiceProvider())
-                .UseEndPoint<TestEndPoint>()
-                .Build();
-
             var dispatcher = new HttpConnectionDispatcher(manager, new LoggerFactory());
 
             var context = MakeRequest<TestEndPoint>("/send", state, format);
@@ -819,7 +815,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             var messages = new List<Message>();
             using (context.Request.Body = new MemoryStream(buffer, writable: false))
             {
-                await dispatcher.ExecuteAsync("", context, options, socket).OrTimeout();
+                await dispatcher.ExecuteAsync("", context, options, CreateSocket<TestEndPoint>()).OrTimeout();
             }
 
             if(!state.Connection.TryGetChannel(out var channel))
@@ -876,6 +872,13 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             {
                 return reader.ReadToEnd();
             }
+        }
+
+        private static SocketDelegate CreateSocket<TEndPoint>() where TEndPoint: EndPoint
+        {
+            return new SocketBuilder(new ServiceCollection().BuildServiceProvider())
+                .UseEndPoint<TEndPoint>()
+                .Build();
         }
     }
 
