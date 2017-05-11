@@ -57,59 +57,57 @@ namespace SocketsSample.Sockets
                     break;
                 }
 
-                while (!cancellationToken.IsCancellationRequested)
+                // Seek to a '\n' in the buffer
+                if (buffer.TrySliceTo((byte)'\n', out var slice, out var cursor))
                 {
-                    // Seek to a '\n' in the buffer
-                    if (buffer.TrySliceTo((byte)'\n', out var slice, out var cursor))
+                    // Mark the message as consumed
+                    cursor = buffer.Move(cursor, 1);
+                    buffer = buffer.Slice(cursor);
+                    input.Advance(buffer.Start);
+
+                    var messageContent = slice.ToArray();
+
+                    // Remove windows '\r' extra newline char
+                    if (messageContent.Length > 0 && messageContent[messageContent.Length - 1] == '\r')
                     {
-                        // Mark the message as consumed
-                        buffer = buffer.Slice(cursor);
-                        input.Advance(buffer.Start);
-
-                        var messageContent = slice.ToArray();
-
-                        // Remove windows '\r' extra newline char
-                        if (messageContent.Length > 0 && messageContent[messageContent.Length - 1] == '\r')
-                        {
-                            var newContent = new byte[messageContent.Length - 1];
-                            Buffer.BlockCopy(messageContent, 0, newContent, 0, newContent.Length);
-                            messageContent = newContent;
-                        }
-
-                        // Write the message to the channel
-                        var message = new Message(messageContent, MessageType.Text);
-                        while (!output.TryWrite(message))
-                        {
-                            if(!await output.WaitToWriteAsync(cancellationToken))
-                            {
-                                // Output closed
-                                return;
-                            }
-                        }
+                        var newContent = new byte[messageContent.Length - 1];
+                        Buffer.BlockCopy(messageContent, 0, newContent, 0, newContent.Length);
+                        messageContent = newContent;
                     }
-                    else
+
+                    // Write the message to the channel
+                    var message = new Message(messageContent, MessageType.Text);
+                    while (!output.TryWrite(message))
                     {
-                        // No line found, mark what we've read as examined and go back to the start
-                        input.Advance(buffer.Start, buffer.End);
-                        if(result.IsCompleted)
+                        if (!await output.WaitToWriteAsync(cancellationToken))
                         {
+                            // Output closed
                             return;
                         }
-                        break;
                     }
+                }
+                else
+                {
+                    // No line found, mark what we've read as examined and go back to the start
+                    input.Advance(buffer.Start, buffer.End);
+                    if (result.IsCompleted)
+                    {
+                        return;
+                    }
+                    break;
                 }
             }
         }
 
         private static async Task Writing(IPipeWriter output, ReadableChannel<Message> input, CancellationToken cancellationToken)
         {
-            while(await input.WaitToReadAsync(cancellationToken))
+            while (await input.WaitToReadAsync(cancellationToken))
             {
-                while(!input.Completion.IsCompleted && !cancellationToken.IsCancellationRequested && input.TryRead(out var message))
+                while (!input.Completion.IsCompleted && !cancellationToken.IsCancellationRequested && input.TryRead(out var message))
                 {
                     var alloc = output.Alloc(message.Payload.Length + 1);
                     var buffer = alloc.Buffer.Slice(0, message.Payload.Length + 1);
-                    if(buffer.Length < message.Payload.Length + 1)
+                    if (buffer.Length < message.Payload.Length + 1)
                     {
                         throw new OutOfMemoryException("Unable to allocate enough memory");
                     }
