@@ -35,7 +35,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
         public Uri Url { get; }
 
         public event Action Connected;
-        public event Action<byte[]> Received;
+        public event Func<byte[], Task> Received;
         public event Action<Exception> Closed;
 
         public HttpConnection(Uri url)
@@ -284,18 +284,21 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
                 while (await Input.WaitToReadAsync())
                 {
-                    if (_connectionState != ConnectionState.Connected)
+                    while (Input.TryRead(out var buffer))
                     {
-                        _logger.LogDebug("Message received but connection is not connected. Skipping raising Received event.");
-                        // drain
-                        Input.TryRead(out _);
-                        continue;
-                    }
+                        if (_connectionState != ConnectionState.Connected)
+                        {
+                            _logger.LogDebug("Message received but connection is not connected. Skipping raising Received event.");
+                            continue;
+                        }
 
-                    if (Input.TryRead(out var buffer))
-                    {
                         _logger.LogDebug("Scheduling raising Received event.");
-                        var ignore = _eventQueue.Enqueue(() =>
+
+                        // The event queue preserves the order but doesn't wait until the callback is complete.
+                        // It means a few things
+                        // - It's harder for user code to dead lock themselves (for receieved events and other events)
+                        // - It's easier for them to blow up memory because there's no back pressure
+                        _ = _eventQueue.Enqueue(() =>
                         {
                             _logger.LogDebug("Raising Received event.");
 
@@ -308,10 +311,6 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
                             return Task.CompletedTask;
                         });
-                    }
-                    else
-                    {
-                        _logger.LogDebug("Could not read message.");
                     }
                 }
 

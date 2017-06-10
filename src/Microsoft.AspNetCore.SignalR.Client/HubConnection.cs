@@ -85,7 +85,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
         }
 
         // TODO: Client return values/tasks?
-        public void On(string methodName, Type[] parameterTypes, Action<object[]> handler)
+        public void On(string methodName, Type[] parameterTypes, Func<object[], Task> handler)
         {
             var invocationHandler = new InvocationHandler(parameterTypes, handler);
             _handlers.AddOrUpdate(methodName, invocationHandler, (_, __) => invocationHandler);
@@ -148,7 +148,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
             }
         }
 
-        private void OnDataReceived(byte[] data)
+        private Task OnDataReceived(byte[] data)
         {
             if (_protocol.TryParseMessages(data, _binder, out var messages))
             {
@@ -163,13 +163,12 @@ namespace Microsoft.AspNetCore.SignalR.Client
                                 var argsList = string.Join(", ", invocation.Arguments.Select(a => a.GetType().FullName));
                                 _logger.LogTrace("Received Invocation '{invocationId}': {methodName}({args})", invocation.InvocationId, invocation.Target, argsList);
                             }
-                            DispatchInvocation(invocation, _connectionActive.Token);
-                            break;
+                            return DispatchInvocation(invocation, _connectionActive.Token);
                         case CompletionMessage completion:
                             if (!TryRemoveInvocation(completion.InvocationId, out irq))
                             {
                                 _logger.LogWarning("Dropped unsolicited Completion message for invocation '{invocationId}'", completion.InvocationId);
-                                return;
+                                return Task.CompletedTask;
                             }
                             DispatchInvocationCompletion(completion, irq);
                             irq.Dispose();
@@ -179,15 +178,16 @@ namespace Microsoft.AspNetCore.SignalR.Client
                             if (!TryGetInvocation(streamItem.InvocationId, out irq))
                             {
                                 _logger.LogWarning("Dropped unsolicited Stream Item message for invocation '{invocationId}'", streamItem.InvocationId);
-                                return;
+                                return Task.CompletedTask;
                             }
-                            DispatchInvocationStreamItemAsync(streamItem, irq);
-                            break;
+                            return DispatchInvocationStreamItemAsync(streamItem, irq);
                         default:
                             throw new InvalidOperationException($"Unknown message type: {message.GetType().FullName}");
                     }
                 }
             }
+
+            return Task.CompletedTask;
         }
 
         private void Shutdown(Exception ex = null)
@@ -218,23 +218,23 @@ namespace Microsoft.AspNetCore.SignalR.Client
             }
         }
 
-        private void DispatchInvocation(InvocationMessage invocation, CancellationToken cancellationToken)
+        private Task DispatchInvocation(InvocationMessage invocation, CancellationToken cancellationToken)
         {
             // Find the handler
             if (!_handlers.TryGetValue(invocation.Target, out InvocationHandler handler))
             {
                 _logger.LogWarning("Failed to find handler for '{target}' method", invocation.Target);
-                return;
+                return Task.CompletedTask;
             }
 
             // TODO: Return values
             // TODO: Dispatch to a sync context to ensure we aren't blocking this loop.
-            handler.Handler(invocation.Arguments);
+            return handler.Handler(invocation.Arguments);
         }
 
         // This async void is GROSS but we need to dispatch asynchronously because we're writing to a Channel
         // and there's nobody to actually wait for us to finish.
-        private async void DispatchInvocationStreamItemAsync(StreamItemMessage streamItem, InvocationRequest irq)
+        private async Task DispatchInvocationStreamItemAsync(StreamItemMessage streamItem, InvocationRequest irq)
         {
             _logger.LogTrace("Received StreamItem for Invocation #{invocationId}", streamItem.InvocationId);
 
@@ -355,10 +355,10 @@ namespace Microsoft.AspNetCore.SignalR.Client
 
         private struct InvocationHandler
         {
-            public Action<object[]> Handler { get; }
+            public Func<object[], Task> Handler { get; }
             public Type[] ParameterTypes { get; }
 
-            public InvocationHandler(Type[] parameterTypes, Action<object[]> handler)
+            public InvocationHandler(Type[] parameterTypes, Func<object[], Task> handler)
             {
                 Handler = handler;
                 ParameterTypes = parameterTypes;

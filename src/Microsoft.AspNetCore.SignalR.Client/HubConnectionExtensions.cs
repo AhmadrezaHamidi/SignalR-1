@@ -195,5 +195,20 @@ namespace Microsoft.AspNetCore.SignalR.Client
                 new[] { typeof(T1), typeof(T2), typeof(T3), typeof(T4), typeof(T5), typeof(T6), typeof(T7), typeof(T8) },
                 args => handler((T1)args[0], (T2)args[1], (T3)args[2], (T4)args[3], (T5)args[4], (T6)args[5], (T7)args[6], (T8)args[7]));
         }
+
+        private static void On(this HubConnection hubConnection, string methodName, Type[] types, Action<object[]> handler)
+        {
+            if (hubConnection == null)
+            {
+                throw new ArgumentNullException(nameof(hubConnection));
+            }
+
+            hubConnection.On(methodName, types, args =>
+            {
+                handler(args);
+                return Task.CompletedTask;
+            });
+        }
+
     }
 }
