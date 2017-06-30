@@ -63,7 +63,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal
         private static readonly Action<ILogger, DateTime, string, WebSocketCloseStatus?, string, Exception> _clientClosed =
             LoggerMessage.Define<DateTime, string, WebSocketCloseStatus?, string>(LogLevel.Debug, 2, "{time}: Connection Id {connectionId}: Client closed connection with status code '{status}' ({description}). Signaling end-of-input to application..");
 
-        private static readonly Action<ILogger, DateTime, string, Exception> _waitingForSend =
+        private static readonly Action<ILogger, DateTime, string, Exception> _waitingForApplication =
             LoggerMessage.Define<DateTime, string>(LogLevel.Debug, 3, "{time}: Connection Id {connectionId}: Waiting for the application to finish sending data.");
 
         private static readonly Action<ILogger, DateTime, string, Exception> _failedSending =
@@ -233,11 +233,11 @@ namespace Microsoft.AspNetCore.Sockets.Internal
             }
         }
 
-        public static void WaitingForSend(this ILogger logger, string connectionId)
+        public static void WaitingForApplication(this ILogger logger, string connectionId)
         {
             if (logger.IsEnabled(LogLevel.Debug))
             {
-                _waitingForSend(logger, DateTime.Now, connectionId, null);
+                _waitingForApplication(logger, DateTime.Now, connectionId, null);
             }
         }
 
