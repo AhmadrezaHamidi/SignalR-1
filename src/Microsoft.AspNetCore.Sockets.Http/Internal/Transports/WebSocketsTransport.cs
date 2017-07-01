@@ -19,6 +19,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
         private readonly ILogger _logger;
         private readonly Channel<byte[]> _application;
         private readonly string _connectionId;
+        private readonly CancellationTokenSource _cts = new CancellationTokenSource();
 
         public WebSocketsTransport(WebSocketOptions options, Channel<byte[]> application, string connectionId, ILoggerFactory loggerFactory)
         {
@@ -58,53 +59,51 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
 
         public async Task ProcessSocketAsync(WebSocket socket)
         {
-            using (var cts = new CancellationTokenSource())
+            // Begin sending and receiving. Receiving must be started first because ExecuteAsync enables SendAsync.
+            var transportTask = StartReceiving(socket);
+            var applicationTask = StartSending(socket);
+
+            // Wait for something to shut complete
+            var trigger = await Task.WhenAny(
+                transportTask,
+                applicationTask);
+
+            var failed = trigger.IsCanceled || trigger.IsFaulted;
+            var task = Task.CompletedTask;
+            if (trigger == transportTask)
             {
-                // Begin sending and receiving. Receiving must be started first because ExecuteAsync enables SendAsync.
-                var transportTask = StartReceiving(socket);
-                var applicationTask = StartSending(socket, cts.Token);
-
-                // Wait for something to shut complete
-                var trigger = await Task.WhenAny(
-                    transportTask,
-                    applicationTask);
-
-                var failed = trigger.IsCanceled || trigger.IsFaulted;
-                var task = Task.CompletedTask;
-                if (trigger == transportTask)
-                {
-                    cts.Cancel();
-                    task = applicationTask;
-                    _logger.WaitingForApplication(_connectionId);
-                }
-                else
-                {
-                    task = transportTask;
-                    _logger.WaitingForClose(_connectionId);
-                }
-
-                // Don't send the close frame if we're already closed
-                if (!IsWebSocketClosed(socket))
-                {
-                    await socket.CloseOutputAsync(failed ? WebSocketCloseStatus.InternalServerError : WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
-                }
-
-                var resultTask = await Task.WhenAny(task, Task.Delay(_options.CloseTimeout));
-
-                if (resultTask != task)
-                {
-                    _logger.CloseTimedOut(_connectionId);
-                    socket.Abort();
-                }
-                else
-                {
-                    // Observe any exceptions from second completed task
-                    await task;
-                }
-
-                // Observe any exceptions from original completed task
-                await trigger;
+                // Cancel the token to forcefully end the application loop
+                _cts.Cancel();
+                task = applicationTask;
+                _logger.WaitingForApplication(_connectionId);
             }
+            else
+            {
+                task = transportTask;
+                _logger.WaitingForClose(_connectionId);
+            }
+
+            // Don't send the close frame if we're already closed
+            if (!IsWebSocketClosed(socket))
+            {
+                await socket.CloseOutputAsync(failed ? WebSocketCloseStatus.InternalServerError : WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+            }
+
+            var resultTask = await Task.WhenAny(task, Task.Delay(_options.CloseTimeout));
+
+            if (resultTask != task)
+            {
+                _logger.CloseTimedOut(_connectionId);
+                socket.Abort();
+            }
+            else
+            {
+                // Observe any exceptions from second completed task
+                await task;
+            }
+
+            // Observe any exceptions from original completed task
+            await trigger;
         }
 
         private async Task StartReceiving(WebSocket socket)
@@ -174,11 +173,13 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
             }
         }
 
-        private async Task StartSending(WebSocket ws, CancellationToken cancellationToken)
+        private async Task StartSending(WebSocket ws)
         {
+            var cancellationToken = _cts.Token;
+
             try
             {
-                while (await _application.In.WaitToReadAsync(cancellationToken))
+                while (!cancellationToken.IsCancellationRequested && await _application.In.WaitToReadAsync(cancellationToken))
                 {
                     // Get a frame from the application
                     while (_application.In.TryRead(out var buffer))
@@ -191,7 +192,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
 
                                 if (!IsWebSocketClosed(ws))
                                 {
-                                    await ws.SendAsync(new ArraySegment<byte>(buffer), _options.WebSocketMessageType, endOfMessage: true, cancellationToken: CancellationToken.None);
+                                    await ws.SendAsync(new ArraySegment<byte>(buffer), _options.WebSocketMessageType, endOfMessage: true, cancellationToken: cancellationToken);
                                 }
                             }
                             catch (WebSocketException socketException) when (IsWebSocketClosed(ws))

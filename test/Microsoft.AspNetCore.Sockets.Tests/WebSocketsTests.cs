@@ -111,17 +111,11 @@ namespace Microsoft.AspNetCore.Sockets.Tests
                 // Give the server socket to the transport and run it
                 var transport = ws.ProcessSocketAsync(await feature.AcceptAsync());
 
-                // Run the client socket
-                var client = feature.Client.ExecuteAndCaptureFramesAsync();
-
                 // Terminate the client to server channel with an exception
                 feature.Client.SendAbort();
 
                 // Wait for the transport
                 await Assert.ThrowsAsync<WebSocketException>(() => transport).OrTimeout();
-
-                var summary = await client.OrTimeout();
-                Assert.Equal(WebSocketCloseStatus.InternalServerError, summary.CloseResult.CloseStatus);
             }
         }
 
