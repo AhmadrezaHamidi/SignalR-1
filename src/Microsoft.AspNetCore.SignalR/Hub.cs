@@ -13,11 +13,11 @@ namespace Microsoft.AspNetCore.SignalR
     public class Hub<TClient> : IDisposable
     {
         private bool _disposed;
-        private IHubConnectionContext<TClient> _clients;
+        private IHubClients _clients;
         private HubCallerContext _context;
         private IGroupManager _groups;
 
-        public IHubConnectionContext<TClient> Clients
+        public IHubClients Clients
         {
             get
             {

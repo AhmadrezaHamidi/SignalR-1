@@ -37,14 +37,14 @@ namespace Microsoft.AspNetCore.SignalR
         private readonly Dictionary<string, HubMethodDescriptor> _methods = new Dictionary<string, HubMethodDescriptor>(StringComparer.OrdinalIgnoreCase);
 
         private readonly HubLifetimeManager<THub> _lifetimeManager;
-        private readonly IHubContext<THub, TClient> _hubContext;
+        private readonly IHubContext<THub> _hubContext;
         private readonly ILogger<HubEndPoint<THub, TClient>> _logger;
         private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly IHubProtocolResolver _protocolResolver;
 
         public HubEndPoint(HubLifetimeManager<THub> lifetimeManager,
                            IHubProtocolResolver protocolResolver,
-                           IHubContext<THub, TClient> hubContext,
+                           IHubContext<THub> hubContext,
                            ILogger<HubEndPoint<THub, TClient>> logger,
                            IServiceScopeFactory serviceScopeFactory)
         {
