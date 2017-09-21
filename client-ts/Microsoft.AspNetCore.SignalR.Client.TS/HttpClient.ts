@@ -38,6 +38,15 @@ export class HttpClient implements IHttpClient {
                     resolve(xhr.response || xhr.responseText);
                 }
                 else {
+                    if (xhr.status == 401) {
+                        let redirect = xhr.getResponseHeader("Location");
+                        if (redirect !== null || redirect !== undefined) {
+                            // client callback for auth?
+                            if (typeof (window) !== "undefined") {
+                                window.location.replace(redirect);
+                            }
+                        }
+                    }
                     reject(new HttpError(xhr.statusText, xhr.status));
                 }
             };
