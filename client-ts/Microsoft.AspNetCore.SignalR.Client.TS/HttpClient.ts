@@ -9,6 +9,10 @@ export interface IHttpClient {
     post(url: string, content: string, headers?: Map<string, string>): Promise<string>;
 }
 
+interface IXhrOptions {
+    onunauthorized: (location: string) => boolean;
+}
+
 export class HttpClient implements IHttpClient {
     get(url: string, headers?: Map<string, string>): Promise<string> {
         return this.xhr("GET", url, headers);
@@ -22,7 +26,7 @@ export class HttpClient implements IHttpClient {
         return this.xhr("POST", url, headers, content);
     }
 
-    private xhr(method: string, url: string, headers?: Map<string, string>, content?: string): Promise<string> {
+    private xhr(method: string, url: string, headers?: Map<string, string>, content?: string, options?: IXhrOptions): Promise<string> {
         return new Promise<string>((resolve, reject) => {
             let xhr = new XMLHttpRequest();
 
@@ -38,8 +42,12 @@ export class HttpClient implements IHttpClient {
                     resolve(xhr.response || xhr.responseText);
                 }
                 else {
-                    if (xhr.status == 401) {
+                    if (xhr.status === 401) {
                         let redirect = xhr.getResponseHeader("Location");
+                        if (options && options.onunauthorized) {
+                            options.onunauthorized(redirect);
+                            reject(new HttpError(xhr.statusText, xhr.status));
+                        }
                         if (redirect !== null || redirect !== undefined) {
                             // client callback for auth?
                             if (typeof (window) !== "undefined") {

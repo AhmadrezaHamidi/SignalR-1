@@ -55,18 +55,18 @@ export class HttpConnection implements IConnection {
 
     private async startInternal(): Promise<void> {
         try {
-            let negotiatePayload = await this.httpClient.options(this.url);
-            let negotiateResponse: INegotiateResponse = JSON.parse(negotiatePayload);
-            this.connectionId = negotiateResponse.connectionId;
+            // let negotiatePayload = await this.httpClient.options(this.url);
+            // let negotiateResponse: INegotiateResponse = JSON.parse(negotiatePayload);
+            // this.connectionId = negotiateResponse.connectionId;
 
-            // the user tries to stop the the connection when it is being started
-            if (this.connectionState == ConnectionState.Disconnected) {
-                return;
-            }
+            // // the user tries to stop the the connection when it is being started
+            // if (this.connectionState == ConnectionState.Disconnected) {
+            //     return;
+            // }
 
-            this.url += (this.url.indexOf("?") == -1 ? "?" : "&") + `id=${this.connectionId}`;
+            // this.url += (this.url.indexOf("?") == -1 ? "?" : "&") + `id=${this.connectionId}`;
 
-            this.transport = this.createTransport(this.options.transport, negotiateResponse.availableTransports);
+            this.transport = this.createTransport(this.options.transport, [ "WebSockets" ]);//negotiateResponse.availableTransports);
             this.transport.onreceive = this.onreceive;
             this.transport.onclose = e => this.stopConnection(true, e);
 
@@ -145,6 +145,7 @@ export class HttpConnection implements IConnection {
 
     private stopConnection(raiseClosed: Boolean, error?: any) {
         if (this.transport) {
+            this.logger.log(LogLevel.Information, "Transport closed.")
             this.transport.stop();
             this.transport = null;
         }

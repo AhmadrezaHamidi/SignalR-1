@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -36,6 +37,17 @@ namespace Microsoft.AspNetCore.Sockets.Internal
             }
             else if (authorizeResult.Challenged)
             {
+                // We can't challenge WebSockets requests. Instead we will allow the request through and the close the Websocket
+                // with error code 4401 and handle it on the client.
+                if (context.WebSockets.IsWebSocketRequest)
+                {
+                    using (var ws = await context.WebSockets.AcceptWebSocketAsync())
+                    {
+                        await ws.CloseOutputAsync((System.Net.WebSockets.WebSocketCloseStatus)4401, "Unauthorized", CancellationToken.None);
+                    }
+                    return false;
+                }
+
                 if (authorizePolicy.AuthenticationSchemes.Count > 0)
                 {
                     foreach (var scheme in authorizePolicy.AuthenticationSchemes)
