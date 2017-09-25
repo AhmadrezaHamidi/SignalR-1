@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.Collections.Generic;
+using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
@@ -37,17 +38,6 @@ namespace Microsoft.AspNetCore.Sockets.Internal
             }
             else if (authorizeResult.Challenged)
             {
-                // We can't challenge WebSockets requests. Instead we will allow the request through and the close the Websocket
-                // with error code 4401 and handle it on the client.
-                if (context.WebSockets.IsWebSocketRequest)
-                {
-                    using (var ws = await context.WebSockets.AcceptWebSocketAsync())
-                    {
-                        await ws.CloseOutputAsync((System.Net.WebSockets.WebSocketCloseStatus)4401, "Unauthorized", CancellationToken.None);
-                    }
-                    return false;
-                }
-
                 if (authorizePolicy.AuthenticationSchemes.Count > 0)
                 {
                     foreach (var scheme in authorizePolicy.AuthenticationSchemes)
@@ -59,7 +49,6 @@ namespace Microsoft.AspNetCore.Sockets.Internal
                 {
                     await context.ChallengeAsync();
                 }
-                return false;
             }
             else if (authorizeResult.Forbidden)
             {
@@ -74,7 +63,22 @@ namespace Microsoft.AspNetCore.Sockets.Internal
                 {
                     await context.ForbidAsync();
                 }
-                return false;
+            }
+            // We can't challenge or forbid WebSockets requests. Instead we will allow the request through and the close the Websocket
+            // with error code 4401 or 4403 respectively and handle it on the client.
+            if (context.WebSockets.IsWebSocketRequest)
+            {
+                using (var ws = await context.WebSockets.AcceptWebSocketAsync())
+                {
+                    if (authorizeResult.Forbidden)
+                    {
+                        await ws.CloseOutputAsync((WebSocketCloseStatus)4403, "Forbidden: redirect to " + context.Response.Headers["Location"], CancellationToken.None);
+                    }
+                    else
+                    {
+                        await ws.CloseOutputAsync((WebSocketCloseStatus)4401, "Unauthorized: redirect to " + context.Response.Headers["Location"], CancellationToken.None);
+                    }
+                }
             }
             return false;
         }

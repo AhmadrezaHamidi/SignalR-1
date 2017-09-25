@@ -44,16 +44,17 @@ export class HttpClient implements IHttpClient {
                 else {
                     if (xhr.status === 401) {
                         let redirect = xhr.getResponseHeader("Location");
-                        if (options && options.onunauthorized) {
-                            options.onunauthorized(redirect);
-                            reject(new HttpError(xhr.statusText, xhr.status));
-                        }
-                        if (redirect !== null || redirect !== undefined) {
-                            // client callback for auth?
-                            if (typeof (window) !== "undefined") {
-                                window.location.replace(redirect);
-                            }
-                        }
+                        reject(new HttpError(redirect, xhr.status));
+                        // if (options && options.onunauthorized) {
+                        //     options.onunauthorized(redirect);
+                        //     reject(new HttpError(xhr.statusText, xhr.status));
+                        // }
+                        // if (redirect !== null || redirect !== undefined) {
+                        //     // client callback for auth?
+                        //     if (typeof (window) !== "undefined") {
+                        //         window.location.replace(redirect);
+                        //     }
+                        // }
                     }
                     reject(new HttpError(xhr.statusText, xhr.status));
                 }

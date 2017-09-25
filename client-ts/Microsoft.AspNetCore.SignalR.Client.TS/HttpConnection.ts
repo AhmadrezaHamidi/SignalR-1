@@ -40,6 +40,15 @@ export class HttpConnection implements IConnection {
         this.httpClient = options.httpClient || new HttpClient();
         this.connectionState = ConnectionState.Initial;
         this.options = options;
+        if (!this.options.onunauthorized) {
+            this.options.onunauthorized = function (location: string): void {
+                if (typeof (window) !== "undefined") {
+                    if (location || location !== "") {
+                        window.location.replace(location);
+                    }
+                }
+            };
+        }
     }
 
     async start(): Promise<void> {
@@ -55,7 +64,18 @@ export class HttpConnection implements IConnection {
 
     private async startInternal(): Promise<void> {
         try {
-            // let negotiatePayload = await this.httpClient.options(this.url);
+            // let negotiatePayload: string;
+            // try {
+            // negotiatePayload = await this.httpClient.options(this.url);
+            // } catch (e) {
+            //     if (e.statusCode === 401) {
+            //         if (this.options.onunauthorized) {
+            //             this.options.onunauthorized(e.message);
+            //             throw new Error("Unauthorized connection: redirect to " + e.message);
+            //         }
+            //     }
+            //     throw e;
+            // }
             // let negotiateResponse: INegotiateResponse = JSON.parse(negotiatePayload);
             // this.connectionId = negotiateResponse.connectionId;
 
@@ -143,11 +163,32 @@ export class HttpConnection implements IConnection {
         this.stopConnection(/*raiseClosed*/ previousState == ConnectionState.Connected);
     }
 
-    private stopConnection(raiseClosed: Boolean, error?: any) {
+    private stopConnection(raiseClosed: Boolean, error?: Error) {
         if (this.transport) {
-            this.logger.log(LogLevel.Information, "Transport closed.")
+            if (error) {
+                this.logger.log(LogLevel.Error, "Transport closed with error: " + error);
+            } else {
+                this.logger.log(LogLevel.Information, "Transport closed.");
+            }
             this.transport.stop();
             this.transport = null;
+
+            if (error) {// && error.message.startsWith(authError)) {
+                let authError: string = "Websocket closed with status code: 4401 (Unauthorized: redirect to ";
+                let forbidError: string = "Websocket closed with status code: 4403 (Forbidden: redirect to ";
+                let location: string;
+                if (error.message.startsWith(authError)) {
+                    location = error.message.substring(authError.length);
+                } else if (error.message.startsWith(forbidError)) {
+                    location = error.message.substring(forbidError.length);
+                }
+                if (location) {
+                    location = location.substring(0, location.length - 1);
+                    if (this.options.onunauthorized) {
+                        this.options.onunauthorized(location);
+                    }
+                }
+            }
         }
 
         this.connectionState = ConnectionState.Disconnected;
