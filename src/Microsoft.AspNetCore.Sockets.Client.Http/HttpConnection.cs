@@ -45,7 +45,8 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         public IFeatureCollection Features { get; } = new FeatureCollection();
 
-        public event Func<Task> Connected;
+        public CancellationToken ClosedToken => new CancellationToken();
+
         public event Func<byte[], Task> Received;
         public event Func<Exception, Task> Closed;
 
@@ -93,9 +94,9 @@ namespace Microsoft.AspNetCore.Sockets.Client
             _transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
         }
 
-        public async Task StartAsync() => await StartAsyncCore().ForceAsync();
+        public async Task StartAsync(CancellationToken cancellationToken) => await StartAsyncCore(cancellationToken).ForceAsync();
 
-        private Task StartAsyncCore()
+        private Task StartAsyncCore(CancellationToken cancellationToken)
         {
             if (Interlocked.CompareExchange(ref _connectionState, ConnectionState.Connecting, ConnectionState.Initial)
                 != ConnectionState.Initial)
@@ -104,7 +105,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
                     new InvalidOperationException("Cannot start a connection that is not in the Initial state."));
             }
 
-            StartAsyncInternal()
+            StartAsyncInternal(cancellationToken)
                 .ContinueWith(t =>
                 {
                     if (t.IsFaulted)
@@ -124,7 +125,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             return _startTcs.Task;
         }
 
-        private async Task StartAsyncInternal()
+        private async Task StartAsyncInternal(CancellationToken cancellationToken)
         {
             _logger.HttpConnectionStarting();
 
@@ -156,24 +157,6 @@ namespace Microsoft.AspNetCore.Sockets.Client
             if (Interlocked.CompareExchange(ref _connectionState, ConnectionState.Connected, ConnectionState.Connecting)
                 == ConnectionState.Connecting)
             {
-                _ = _eventQueue.Enqueue(async () =>
-                {
-                    _logger.RaiseConnected(_connectionId);
-
-                    var connectedEventHandler = Connected;
-                    if (connectedEventHandler != null)
-                    {
-                        try
-                        {
-                            await connectedEventHandler.Invoke();
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.ExceptionThrownFromHandler(_connectionId, nameof(Connected), ex);
-                        }
-                    }
-                });
-
                 _ = Input.Completion.ContinueWith(async t =>
                 {
                     Interlocked.Exchange(ref _connectionState, ConnectionState.Disconnected);
@@ -423,9 +406,9 @@ namespace Microsoft.AspNetCore.Sockets.Client
             }
         }
 
-        public async Task DisposeAsync() => await DisposeAsyncCore().ForceAsync();
+        public async Task DisposeAsync(CancellationToken cancellationToken = default(CancellationToken)) => await DisposeAsyncCore(cancellationToken).ForceAsync();
 
-        private async Task DisposeAsyncCore()
+        private async Task DisposeAsyncCore(CancellationToken cancellationToken = default(CancellationToken))
         {
             _logger.StoppingClient(_connectionId);
 
@@ -461,6 +444,12 @@ namespace Microsoft.AspNetCore.Sockets.Client
             }
 
             _httpClient.Dispose();
+        }
+
+
+        public IDisposable OnReceived(Func<byte[], object, Task> callback, object state)
+        {
+            throw new NotImplementedException();
         }
 
         private class ConnectionState

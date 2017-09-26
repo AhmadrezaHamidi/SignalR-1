@@ -39,18 +39,6 @@ namespace Microsoft.AspNetCore.SignalR.Client
 
         private int _nextId = 0;
 
-        public event Func<Task> Connected
-        {
-            add { _connection.Connected += value; }
-            remove { _connection.Connected -= value; }
-        }
-
-        public event Func<Exception, Task> Closed
-        {
-            add { _connection.Closed += value; }
-            remove { _connection.Closed -= value; }
-        }
-
         public HubConnection(IConnection connection, IHubProtocol protocol, ILoggerFactory loggerFactory)
         {
             if (connection == null)
@@ -68,13 +56,16 @@ namespace Microsoft.AspNetCore.SignalR.Client
             _protocol = protocol;
             _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
             _logger = _loggerFactory.CreateLogger<HubConnection>();
-            _connection.Received += OnDataReceivedAsync;
-            _connection.Closed += Shutdown;
+            _connection.OnReceived((data, state) => OnDataReceivedAsync(data), new object());
+            _connection.ClosedToken.Register(() => Shutdown());
+
         }
 
-        public async Task StartAsync() => await StartAsyncCore().ForceAsync();
+        public CancellationToken ClosedToken { get; }
 
-        private async Task StartAsyncCore()
+        public async Task StartAsync(CancellationToken cancellationToken = default(CancellationToken)) => await StartAsyncCore(cancellationToken).ForceAsync();
+
+        private async Task StartAsyncCore(CancellationToken cancellationToken = default(CancellationToken))
         {
             var transferModeFeature = _connection.Features.Get<ITransferModeFeature>();
             if (transferModeFeature == null)
@@ -89,7 +80,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
                     : TransferMode.Text;
 
             transferModeFeature.TransferMode = requestedTransferMode;
-            await _connection.StartAsync();
+            await _connection.StartAsync(cancellationToken);
             var actualTransferMode = transferModeFeature.TransferMode;
 
             _protocolReaderWriter = new HubProtocolReaderWriter(_protocol, GetDataEncoder(requestedTransferMode, actualTransferMode));
@@ -117,11 +108,11 @@ namespace Microsoft.AspNetCore.SignalR.Client
             return new PassThroughEncoder();
         }
 
-        public async Task DisposeAsync() => await DisposeAsyncCore().ForceAsync();
+        public async Task DisposeAsync(CancellationToken cancellationToken = default(CancellationToken)) => await DisposeAsyncCore(cancellationToken).ForceAsync();
 
-        private async Task DisposeAsyncCore()
+        private async Task DisposeAsyncCore(CancellationToken cancellationToken = default(CancellationToken))
         {
-            await _connection.DisposeAsync();
+            await _connection.DisposeAsync(cancellationToken);
         }
 
         // TODO: Client return values/tasks?
@@ -129,9 +120,10 @@ namespace Microsoft.AspNetCore.SignalR.Client
         {
             var invocationHandler = new InvocationHandler(parameterTypes, handler);
             _handlers.AddOrUpdate(methodName, invocationHandler, (_, __) => invocationHandler);
+            
         }
 
-        public async Task<ReadableChannel<object>> StreamAsync(string methodName, Type returnType, CancellationToken cancellationToken, params object[] args)
+        public async Task<ReadableChannel<object>> StreamAsync(string methodName, Type returnType, CancellationToken cancellationToken = default(CancellationToken), params object[] args)
         {
             return await StreamAsyncCore(methodName, returnType, cancellationToken).ForceAsync();
         }
@@ -143,7 +135,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
             return channel;
         }
 
-        public async Task<object> InvokeAsync(string methodName, Type returnType, CancellationToken cancellationToken, params object[] args) =>
+        public async Task<object> InvokeAsync(string methodName, Type returnType, CancellationToken cancellationToken = default(CancellationToken), params object[] args) =>
              await InvokeAsyncCore(methodName, returnType, cancellationToken, args).ForceAsync();
 
         private async Task<object> InvokeAsyncCore(string methodName, Type returnType, CancellationToken cancellationToken, params object[] args)
@@ -382,6 +374,22 @@ namespace Microsoft.AspNetCore.SignalR.Client
                 }
             }
         }
+
+        private class Subscription : IDisposable
+        {
+            private string _methodName;
+            private ConcurrentDictionary<string, InvocationHandler> _handler;
+            public Subscription(string methodName, ConcurrentDictionary<string, InvocationHandler> handler)
+            {
+                _methodName = methodName;
+                _handler = handler;
+            }
+            public void Dispose()
+            {
+                _handler.TryRemove(_methodName, out _);
+            }
+        }
+
 
         private class HubBinder : IInvocationBinder
         {
