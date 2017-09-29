@@ -29,10 +29,6 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
 
         private TransferMode? _transferMode;
 
-        public event Func<Task> Connected;
-        public event Func<byte[], Task> Received;
-        public event Func<Exception, Task> Closed;
-
         public Task Started => _started.Task;
         public Task Disposed => _disposed.Task;
         public ReadableChannel<byte[]> SentMessages => _sentMessages.In;
@@ -40,13 +36,15 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
 
         public IFeatureCollection Features { get; } = new FeatureCollection();
 
+        public CancellationToken ClosedToken => new CancellationToken();
+
         public TestConnection(TransferMode? transferMode = null)
         {
             _transferMode = transferMode;
             _receiveLoop = ReceiveLoopAsync(_receiveShutdownToken.Token);
         }
 
-        public Task DisposeAsync()
+        public Task DisposeAsync(CancellationToken cancellationToken = default)
         {
             _disposed.TrySetResult(null);
             _receiveShutdownToken.Cancel();
@@ -70,7 +68,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             throw new ObjectDisposedException("Unable to send message, underlying channel was closed");
         }
 
-        public Task StartAsync()
+        public Task StartAsync(CancellationToken cancellationToken = default)
         {
             if (_transferMode.HasValue)
             {
@@ -85,7 +83,6 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             }
 
             _started.TrySetResult(null);
-            Connected?.Invoke();
             return Task.CompletedTask;
         }
 
@@ -135,6 +132,12 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             {
                 Closed?.Invoke(ex);
             }
+        }
+
+
+        public IDisposable OnReceived(Func<byte[], object, Task> callback, object state)
+        {
+            throw new NotImplementedException();
         }
     }
 }

@@ -2,6 +2,8 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -40,15 +42,15 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         private ReadableChannel<byte[]> Input => _transportChannel.In;
         private WritableChannel<SendMessage> Output => _transportChannel.Out;
+        private ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> _callBacks = new ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>>();
+        private int _callBackId;
 
         public Uri Url { get; }
 
         public IFeatureCollection Features { get; } = new FeatureCollection();
 
-        public CancellationToken ClosedToken => new CancellationToken();
-
-        public event Func<byte[], Task> Received;
-        public event Func<Exception, Task> Closed;
+        private CancellationTokenSource ClosedTokenSource => new CancellationTokenSource();
+        public CancellationToken ClosedToken => ClosedTokenSource.Token;
 
         public HttpConnection(Uri url)
             : this(url, TransportType.All)
@@ -94,7 +96,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             _transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
         }
 
-        public async Task StartAsync(CancellationToken cancellationToken) => await StartAsyncCore(cancellationToken).ForceAsync();
+        public async Task StartAsync(CancellationToken cancellationToken = default(CancellationToken)) => await StartAsyncCore(cancellationToken).ForceAsync();
 
         private Task StartAsyncCore(CancellationToken cancellationToken)
         {
@@ -179,18 +181,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
                     _logger.RaiseClosed(_connectionId);
 
-                    var closedEventHandler = Closed;
-                    if (closedEventHandler != null)
-                    {
-                        try
-                        {
-                            await closedEventHandler.Invoke(t.IsFaulted ? t.Exception.InnerException : null);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.ExceptionThrownFromHandler(_connectionId, nameof(Closed), ex);
-                        }
-                    }
+                    ClosedTokenSource.Cancel();
                 });
 
                 // start receive loop only after the Connected event was raised to
@@ -340,17 +331,9 @@ namespace Microsoft.AspNetCore.Sockets.Client
                         {
                             _logger.RaiseReceiveEvent(_connectionId);
 
-                            var receivedHandler = Received;
-                            if (receivedHandler != null)
+                            foreach(var callBackTuple in _callBacks.Values)
                             {
-                                try
-                                {
-                                    await receivedHandler(buffer);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.ExceptionThrownFromHandler(_connectionId, nameof(Received), ex);
-                                }
+                               await  callBackTuple.Item1(buffer, callBackTuple.Item2);
                             }
                         });
                     }
@@ -449,7 +432,25 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         public IDisposable OnReceived(Func<byte[], object, Task> callback, object state)
         {
-            throw new NotImplementedException();
+            Interlocked.Increment(ref _callBackId);
+            var addedCallBack = _callBacks.TryAdd(_callBackId, new Tuple<Func<byte[], object, Task>, object>(callback, state));
+            Debug.Assert(addedCallBack);
+            return new Subscription(_callBackId, _callBacks);
+        }
+
+        private class Subscription : IDisposable
+        {
+            private int _callBackId ;
+            private ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> _handler;
+            public Subscription(int callBackId, ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> handler)
+            {
+                _callBackId= callBackId;
+                _handler = handler;
+            }
+            public void Dispose()
+            {
+                _handler.TryRemove(_callBackId, out _);
+            }
         }
 
         private class ConnectionState

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.SignalR.Internal;
@@ -24,22 +25,22 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
         {
             var connection = new Mock<IConnection>();
             connection.SetupGet(p => p.Features).Returns(new FeatureCollection());
-            connection.Setup(m => m.StartAsync()).Returns(Task.CompletedTask).Verifiable();
+            connection.Setup(m => m.StartAsync(new CancellationToken())).Returns(Task.CompletedTask).Verifiable();
             var hubConnection = new HubConnection(connection.Object, Mock.Of<IHubProtocol>(), null);
             await hubConnection.StartAsync();
 
-            connection.Verify(c => c.StartAsync(), Times.Once());
+            connection.Verify(c => c.StartAsync(new CancellationToken()), Times.Once());
         }
 
         [Fact]
         public async Task DisposeAsyncCallsConnectionStart()
         {
             var connection = new Mock<IConnection>();
-            connection.Setup(m => m.StartAsync()).Verifiable();
+            connection.Setup(m => m.StartAsync(new CancellationToken())).Verifiable();
             var hubConnection = new HubConnection(connection.Object, Mock.Of<IHubProtocol>(), null);
             await hubConnection.DisposeAsync();
 
-            connection.Verify(c => c.DisposeAsync(), Times.Once());
+            connection.Verify(c => c.DisposeAsync(new CancellationToken()), Times.Once());
         }
 
         [Fact]
@@ -55,40 +56,16 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             Assert.Same(exception, actualException);
         }
 
-        [Fact]
-        public async Task HubConnectionConnectedEventRaisedWhenTheClientIsConnected()
-        {
-            var connection = new TestConnection();
-            var hubConnection = new HubConnection(connection, Mock.Of<IHubProtocol>(), null);
-            try
-            {
-                var connectedEventRaisedTcs = new TaskCompletionSource<object>();
-                hubConnection.Connected += () =>
-                {
-                    connectedEventRaisedTcs.SetResult(null);
-                    return Task.CompletedTask;
-                };
-
-                await hubConnection.StartAsync();
-
-                await connectedEventRaisedTcs.Task.OrTimeout();
-            }
-            finally
-            {
-                await hubConnection.DisposeAsync();
-            }
-        }
 
         [Fact]
         public async Task ClosedEventRaisedWhenTheClientIsStopped()
         {
             var hubConnection = new HubConnection(new TestConnection(), Mock.Of<IHubProtocol>(), null);
             var closedEventTcs = new TaskCompletionSource<Exception>();
-            hubConnection.Closed += e =>
+            hubConnection.ClosedToken.Register(() =>
             {
-                closedEventTcs.SetResult(e);
-                return Task.CompletedTask;
-            };
+                closedEventTcs.SetResult(null);
+            });
 
             await hubConnection.StartAsync();
             await hubConnection.DisposeAsync();
@@ -130,8 +107,8 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             var mockConnection = new Mock<IConnection>();
             mockConnection.SetupGet(p => p.Features).Returns(new FeatureCollection());
             mockConnection
-                .Setup(m => m.DisposeAsync())
-                .Callback(() => mockConnection.Raise(c => c.Closed += null, exception))
+                .Setup(m => m.DisposeAsync(new CancellationToken()))
+                .Callback(() => mockConnection.Raise(c => c.ClosedToken.Register(() => { }), exception))
                 .Returns(Task.FromResult<object>(null));
 
             var hubConnection = new HubConnection(mockConnection.Object, Mock.Of<IHubProtocol>(), new LoggerFactory());
@@ -157,7 +134,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             var hubConnection = new HubConnection(mockConnection.Object, mockProtocol, null);
             await hubConnection.StartAsync();
 
-            mockConnection.Raise(c => c.Received += null, new object[] { new byte[] { } });
+            mockConnection.Raise(c => c.OnReceived((_, __) => { return null; }, null) , new object[] { new byte[] { } });
             Assert.Equal(1, mockProtocol.ParseCalls);
         }
 

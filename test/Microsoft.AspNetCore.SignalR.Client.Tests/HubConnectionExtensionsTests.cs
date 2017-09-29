@@ -122,89 +122,89 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             }
         }
 
-        [Fact]
-        public async Task ConnectionClosedOnCallbackArgumentCountMismatch()
-        {
-            var connection = new TestConnection();
-            var hubConnection = new HubConnection(connection, new JsonHubProtocol(new JsonSerializer()), new LoggerFactory());
-            var closeTcs = new TaskCompletionSource<Exception>();
-            hubConnection.Closed += e =>
-            {
-                if (e == null)
-                {
-                    closeTcs.TrySetResult(null);
-                }
-                else
-                {
-                    closeTcs.TrySetException(e);
-                }
-                return Task.CompletedTask;
-            };
+        //[Fact]
+        //public async Task ConnectionClosedOnCallbackArgumentCountMismatch()
+        //{
+        //    var connection = new TestConnection();
+        //    var hubConnection = new HubConnection(connection, new JsonHubProtocol(new JsonSerializer()), new LoggerFactory());
+        //    var closeTcs = new TaskCompletionSource<Exception>();
+        //    hubConnection.Closed += e =>
+        //    {
+        //        if (e == null)
+        //        {
+        //            closeTcs.TrySetResult(null);
+        //        }
+        //        else
+        //        {
+        //            closeTcs.TrySetException(e);
+        //        }
+        //        return Task.CompletedTask;
+        //    };
 
-            try
-            {
-                hubConnection.On<int>("Foo", r => { });
-                await hubConnection.StartAsync();
+        //    try
+        //    {
+        //        hubConnection.On<int>("Foo", r => { });
+        //        await hubConnection.StartAsync();
 
-                await connection.ReceiveJsonMessage(
-                    new
-                    {
-                        invocationId = "1",
-                        type = 1,
-                        target = "Foo",
-                        arguments = new object[] { 42, "42" }
-                    }).OrTimeout();
+        //        await connection.ReceiveJsonMessage(
+        //            new
+        //            {
+        //                invocationId = "1",
+        //                type = 1,
+        //                target = "Foo",
+        //                arguments = new object[] { 42, "42" }
+        //            }).OrTimeout();
 
-                var ex = await Assert.ThrowsAsync<FormatException>(async () => await closeTcs.Task.OrTimeout());
-                Assert.Equal("Invocation provides 2 argument(s) but target expects 1.", ex.Message);
-            }
-            finally
-            {
-                await hubConnection.DisposeAsync().OrTimeout();
-                await connection.DisposeAsync().OrTimeout();
-            }
-        }
+        //        var ex = await Assert.ThrowsAsync<FormatException>(async () => await closeTcs.Task.OrTimeout());
+        //        Assert.Equal("Invocation provides 2 argument(s) but target expects 1.", ex.Message);
+        //    }
+        //    finally
+        //    {
+        //        await hubConnection.DisposeAsync().OrTimeout();
+        //        await connection.DisposeAsync().OrTimeout();
+        //    }
+        //}
 
-        [Fact]
-        public async Task ConnectionClosedOnCallbackArgumentTypeMismatch()
-        {
-            var connection = new TestConnection();
-            var hubConnection = new HubConnection(connection, new JsonHubProtocol(), new LoggerFactory());
-            var closeTcs = new TaskCompletionSource<Exception>();
-            hubConnection.Closed += e =>
-            {
-                if (e == null)
-                {
-                    closeTcs.TrySetResult(null);
-                }
-                else
-                {
-                    closeTcs.TrySetException(e);
-                }
-                return Task.CompletedTask;
-            };
+        //[Fact]
+        //public async Task ConnectionClosedOnCallbackArgumentTypeMismatch()
+        //{
+        //    var connection = new TestConnection();
+        //    var hubConnection = new HubConnection(connection, new JsonHubProtocol(), new LoggerFactory());
+        //    var closeTcs = new TaskCompletionSource<Exception>();
+        //    hubConnection.Closed += e =>
+        //    {
+        //        if (e == null)
+        //        {
+        //            closeTcs.TrySetResult(null);
+        //        }
+        //        else
+        //        {
+        //            closeTcs.TrySetException(e);
+        //        }
+        //        return Task.CompletedTask;
+        //    };
 
-            try
-            {
-                hubConnection.On<int>("Foo", r => { });
-                await hubConnection.StartAsync();
+        //    try
+        //    {
+        //        hubConnection.On<int>("Foo", r => { });
+        //        await hubConnection.StartAsync();
 
-                await connection.ReceiveJsonMessage(
-                    new
-                    {
-                        invocationId = "1",
-                        type = 1,
-                        target = "Foo",
-                        arguments = new object[] { "xxx" }
-                    }).OrTimeout();
+        //        await connection.ReceiveJsonMessage(
+        //            new
+        //            {
+        //                invocationId = "1",
+        //                type = 1,
+        //                target = "Foo",
+        //                arguments = new object[] { "xxx" }
+        //            }).OrTimeout();
 
-                var ex = await Assert.ThrowsAsync<FormatException>(async () => await closeTcs.Task.OrTimeout());
-            }
-            finally
-            {
-                await hubConnection.DisposeAsync().OrTimeout();
-                await connection.DisposeAsync().OrTimeout();
-            }
-        }
+        //        var ex = await Assert.ThrowsAsync<FormatException>(async () => await closeTcs.Task.OrTimeout());
+        //    }
+        //    finally
+        //    {
+        //        await hubConnection.DisposeAsync().OrTimeout();
+        //        await connection.DisposeAsync().OrTimeout();
+        //    }
+        //}
     }
 }

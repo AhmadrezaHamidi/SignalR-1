@@ -37,7 +37,8 @@ namespace Microsoft.AspNetCore.SignalR.Client
         private readonly Dictionary<string, InvocationRequest> _pendingCalls = new Dictionary<string, InvocationRequest>();
         private readonly ConcurrentDictionary<string, InvocationHandler> _handlers = new ConcurrentDictionary<string, InvocationHandler>();
 
-        private int _nextId = 0;
+        private int _nextInvocationId = 0;
+        private int __nextCallBackId = 0;
 
         public HubConnection(IConnection connection, IHubProtocol protocol, ILoggerFactory loggerFactory)
         {
@@ -56,12 +57,12 @@ namespace Microsoft.AspNetCore.SignalR.Client
             _protocol = protocol;
             _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
             _logger = _loggerFactory.CreateLogger<HubConnection>();
-            _connection.OnReceived((data, state) => OnDataReceivedAsync(data), new object());
+            _connection.OnReceived((data, state) => OnDataReceivedAsync(data), null);
             _connection.ClosedToken.Register(() => Shutdown());
 
         }
 
-        public CancellationToken ClosedToken { get; }
+        public CancellationToken ClosedToken => _connection.ClosedToken;
 
         public async Task StartAsync(CancellationToken cancellationToken = default(CancellationToken)) => await StartAsyncCore(cancellationToken).ForceAsync();
 
@@ -116,10 +117,13 @@ namespace Microsoft.AspNetCore.SignalR.Client
         }
 
         // TODO: Client return values/tasks?
-        public void On(string methodName, Type[] parameterTypes, Func<object[], Task> handler)
+        public IDisposable On(string methodName, Type[] parameterTypes, Func<object[], object, Task> handler, object state)
         {
-            var invocationHandler = new InvocationHandler(parameterTypes, handler);
-            _handlers.AddOrUpdate(methodName, invocationHandler, (_, __) => invocationHandler);
+            // Add a unique id 
+            var id = GetNextCallBackId() + methodName;
+            var invocationHandler = new InvocationHandler(parameterTypes, handler, state);
+            _handlers.AddOrUpdate(id, invocationHandler, (_, __) => invocationHandler);
+            return new Subscription(id, _handlers);
             
         }
 
@@ -281,7 +285,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
 
             // TODO: Return values
             // TODO: Dispatch to a sync context to ensure we aren't blocking this loop.
-            return handler.Handler(invocation.Arguments);
+            return handler.Handler(invocation.Arguments, null);
         }
 
         // This async void is GROSS but we need to dispatch asynchronously because we're writing to a Channel
@@ -330,7 +334,8 @@ namespace Microsoft.AspNetCore.SignalR.Client
             }
         }
 
-        private string GetNextId() => Interlocked.Increment(ref _nextId).ToString();
+        private string GetNextCallBackId() => Interlocked.Increment(ref __nextCallBackId).ToString();
+        private string GetNextId() => Interlocked.Increment(ref _nextInvocationId).ToString();
 
         private void AddInvocation(InvocationRequest irq)
         {
@@ -423,13 +428,15 @@ namespace Microsoft.AspNetCore.SignalR.Client
 
         private struct InvocationHandler
         {
-            public Func<object[], Task> Handler { get; }
+            public Func<object[], object, Task> Handler { get; }
             public Type[] ParameterTypes { get; }
+            public object State { get; }
 
-            public InvocationHandler(Type[] parameterTypes, Func<object[], Task> handler)
+            public InvocationHandler(Type[] parameterTypes, Func<object[], object, Task> handler, object state)
             {
                 Handler = handler;
                 ParameterTypes = parameterTypes;
+                State = state;
             }
         }
 
