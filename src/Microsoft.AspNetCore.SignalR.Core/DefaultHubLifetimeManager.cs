@@ -80,7 +80,7 @@ namespace Microsoft.AspNetCore.SignalR
                     continue;
                 }
 
-                tasks.Add(WriteAsync(connection, message));
+                tasks.Add(connection.WriteAsync(message));
             }
 
             return Task.WhenAll(tasks);
@@ -102,7 +102,7 @@ namespace Microsoft.AspNetCore.SignalR
 
             var message = CreateInvocationMessage(methodName, args);
 
-            return WriteAsync(connection, message);
+            return connection.WriteAsync(message);
         }
 
         public override Task InvokeGroupAsync(string groupName, string methodName, object[] args)
@@ -116,7 +116,7 @@ namespace Microsoft.AspNetCore.SignalR
             if (group != null)
             {
                 var message = CreateInvocationMessage(methodName, args);
-                var tasks = group.Values.Select(c => WriteAsync(c, message));
+                var tasks = group.Values.Select(c => c.WriteAsync(message));
                 return Task.WhenAll(tasks);
             }
 
@@ -145,17 +145,6 @@ namespace Microsoft.AspNetCore.SignalR
             _connections.Remove(connection);
             _groups.RemoveDisconnectedConnection(connection.ConnectionId);
             return Task.CompletedTask;
-        }
-
-        private async Task WriteAsync(HubConnectionContext connection, HubInvocationMessage hubMessage)
-        {
-            while (await connection.Output.Writer.WaitToWriteAsync())
-            {
-                if (connection.Output.Writer.TryWrite(hubMessage))
-                {
-                    break;
-                }
-            }
         }
 
         private string GetInvocationId()
