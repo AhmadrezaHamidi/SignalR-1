@@ -13,7 +13,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR.Internal;
 using Microsoft.AspNetCore.SignalR.Internal.Protocol;
-using Microsoft.AspNetCore.SignalR.Tests.Common;
 using Microsoft.AspNetCore.Sockets;
 using Microsoft.AspNetCore.Sockets.Features;
 using Microsoft.Extensions.DependencyInjection;
@@ -1379,7 +1378,6 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 services.Configure<HubOptions>(options =>
                     options.KeepAliveInterval = TimeSpan.FromMilliseconds(100)));
             var endPoint = serviceProvider.GetService<HubEndPoint<MethodHub>>();
-            endPoint.KeepAliveTimerInterval = TimeSpan.FromMilliseconds(10);
 
             using (var client = new TestClient(false, new JsonHubProtocol()))
             {
@@ -1391,8 +1389,13 @@ namespace Microsoft.AspNetCore.SignalR.Tests
                 // being available for the endpoint to run.
                 for (var i = 0; i < 5; i += 1)
                 {
-                    await Task.Yield();
-                    await Task.Delay(100);
+                    // Tick the heartbeat feature manually, 10 times, every 10ms
+                    for(var j = 0; j < 10; j += 1)
+                    {
+                        client.Connection.TickHeartbeat();
+                        await Task.Yield();
+                        await Task.Delay(10);
+                    }
                 }
 
                 // Shut down
