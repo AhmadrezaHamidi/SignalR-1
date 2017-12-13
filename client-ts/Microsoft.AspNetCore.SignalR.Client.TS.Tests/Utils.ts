@@ -3,16 +3,22 @@
 
 import { clearTimeout, setTimeout } from "timers";
 
-export function asyncit(expectation: string, assertion?: () => Promise<any>, timeout?: number): void {
+export function asyncit(expectation: string, assertion?: () => Promise<any> | void, timeout?: number): void {
     let testFunction: (done: DoneFn) => void;
     if (assertion) {
         testFunction = done => {
-            assertion()
-                .then(() => done())
-                .catch((err) => {
-                    fail(err);
-                    done();
-                });
+            let result = assertion();
+            if (result) {
+                // Asynchronous test
+                result.then(() => done())
+                    .catch((err) => {
+                        fail(err);
+                        done();
+                    });
+            } else {
+                // Synchronous test
+                done();
+            }
         };
     }
 
@@ -53,5 +59,23 @@ export class PromiseSource<T> {
 
     reject(reason?: any) {
         this.rejecter(reason);
+    }
+}
+
+export class SyncPoint {
+    private _atSyncPoint: PromiseSource<void>;
+    private _continueFromSyncPoint: PromiseSource<void>;
+
+    async waitToContinue(): Promise<void> {
+        this._atSyncPoint.resolve();
+        await this._continueFromSyncPoint.promise;
+    }
+
+    waitForSyncPoint(): Promise<void> {
+        return this._atSyncPoint.promise;
+    }
+
+    continue() {
+        this._continueFromSyncPoint.resolve();
     }
 }

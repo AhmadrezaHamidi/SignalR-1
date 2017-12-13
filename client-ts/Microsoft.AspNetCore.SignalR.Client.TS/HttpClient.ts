@@ -1,36 +1,53 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-import { HttpError } from "./HttpError"
+import { HttpError, TimeoutError } from "./Errors"
 
 export interface IHttpClient {
-    get(url: string, headers?: Map<string, string>): Promise<string>;
-    post(url: string, content: string, headers?: Map<string, string>): Promise<string>;
+    supportsBinary: boolean;
+    send(method: string, url: string, content?: string, options?: HttpRequestOptions): Promise<HttpResponse>;
+}
+
+export interface HttpResponse {
+    status: number,
+    content: string | ArrayBuffer
+}
+
+export interface HttpRequestOptions {
+    headers?: Map<string, string>,
+    responseType?: XMLHttpRequestResponseType,
+    timeout?: number,
 }
 
 export class HttpClient implements IHttpClient {
-    get(url: string, headers?: Map<string, string>): Promise<string> {
-        return this.xhr("GET", url, headers);
+    supportsBinary: boolean;
+
+    constructor() {
+        this.supportsBinary = (typeof new XMLHttpRequest().responseType !== "string");
     }
 
-    post(url: string, content: string, headers?: Map<string, string>): Promise<string> {
-        return this.xhr("POST", url, headers, content);
-    }
-
-    private xhr(method: string, url: string, headers?: Map<string, string>, content?: string): Promise<string> {
-        return new Promise<string>((resolve, reject) => {
+    send(method: string, url: string, content?: string, options?: HttpRequestOptions): Promise<HttpResponse> {
+        return new Promise<HttpResponse>((resolve, reject) => {
+            options = options || {};
             let xhr = new XMLHttpRequest();
 
             xhr.open(method, url, true);
             xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
-            if (headers) {
-                headers.forEach((value, header) => xhr.setRequestHeader(header, value));
+
+            if (options.responseType) {
+                xhr.responseType = options.responseType;
             }
 
-            xhr.send(content);
+            if (options.headers) {
+                options.headers.forEach((value, header) => xhr.setRequestHeader(header, value));
+            }
+
             xhr.onload = () => {
                 if (xhr.status >= 200 && xhr.status < 300) {
-                    resolve(xhr.response || xhr.responseText);
+                    resolve({
+                        status: xhr.status,
+                        content: xhr.response || xhr.responseText
+                    })
                 }
                 else {
                     reject(new HttpError(xhr.statusText, xhr.status));
@@ -40,6 +57,12 @@ export class HttpClient implements IHttpClient {
             xhr.onerror = () => {
                 reject(new HttpError(xhr.statusText, xhr.status));
             }
+
+            xhr.ontimeout = () => {
+                reject(new TimeoutError("The timeout period elapsed"));
+            }
+
+            xhr.send(content);
         });
     }
 }

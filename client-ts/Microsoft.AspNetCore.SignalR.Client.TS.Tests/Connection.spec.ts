@@ -8,6 +8,9 @@ import { DataReceived, TransportClosed } from "../Microsoft.AspNetCore.SignalR.C
 import { ITransport, TransportType, TransferMode } from "../Microsoft.AspNetCore.SignalR.Client.TS/Transports"
 import { eachTransport, eachEndpointUrl } from "./Common";
 
+import { asyncit as it, captureException, PromiseSource, SyncPoint } from "./Utils";
+import { connect } from "tls";
+
 describe("Connection", () => {
     it("cannot be created with relative url if document object is not present", () => {
         expect(() => new HttpConnection("/test"))
@@ -21,7 +24,7 @@ describe("Connection", () => {
         delete (<any>global).window;
     });
 
-    it("starting connection fails if getting id fails", async (done) => {
+    it("starting connection fails if getting id fails", async () => {
         let options: IHttpConnectionOptions = {
             httpClient: <IHttpClient>{
                 post(url: string): Promise<string> {
@@ -36,119 +39,109 @@ describe("Connection", () => {
 
         let connection = new HttpConnection("http://tempuri.org", options);
 
-        try {
-            await connection.start();
-            fail();
-            done();
-        }
-        catch (e) {
-            expect(e).toBe("error");
-            done();
-        }
+        let ex = await captureException(() => connection.start());
+        expect(ex).not.toBeNull();
+        expect(ex).toEqual("error");
     });
 
-    it("cannot start a running connection", async (done) => {
+    it("cannot start a running connection", async () => {
         let options: IHttpConnectionOptions = {
             httpClient: <IHttpClient>{
                 post(url: string): Promise<string> {
-                    connection.start()
-                        .then(() => {
-                            fail();
-                            done();
-                        })
-                        .catch((error: Error) => {
-                            expect(error.message).toBe("Cannot start a connection that is not in the 'Initial' state.");
-                            done();
-                        });
-
-                    return Promise.reject("error");
+                    return Promise.resolve("{ \"connectionId\": \"42\", \"availableTransports\": [\"LongPolling\"] }");
                 },
                 get(url: string): Promise<string> {
                     return Promise.resolve("");
                 }
             },
+            transport: TransportType.LongPolling,
             logging: null
-        } as IHttpConnectionOptions;
+        };
 
         let connection = new HttpConnection("http://tempuri.org", options);
 
-        try {
-            await connection.start();
-        }
-        catch (e) {
-            // This exception is thrown after the actual verification is completed.
-            // The connection is not setup to be running so just ignore the error.
-        }
+        // Start the connection
+        await connection.start();
+
+        // Try to start again, but it should fail
+        let ex = await captureException(() => connection.start());
+        expect(ex).not.toBeNull();
+        expect(ex.message).toEqual("Cannot start a connection that is not in the 'Initial' state.");
     });
 
-    it("cannot start a stopped connection", async (done) => {
+    it("cannot start a stopped connection", async () => {
         let options: IHttpConnectionOptions = {
             httpClient: <IHttpClient>{
                 post(url: string): Promise<string> {
-                    return Promise.reject("error");
+                    return Promise.resolve("{ \"connectionId\": \"42\", \"availableTransports\": [\"LongPolling\"] }");
                 },
                 get(url: string): Promise<string> {
                     return Promise.resolve("");
                 }
             },
+            transport: TransportType.LongPolling,
             logging: null
-        } as IHttpConnectionOptions;
+        };
 
         let connection = new HttpConnection("http://tempuri.org", options);
 
-        try {
-            // start will fail and transition the connection to the Disconnected state
-            await connection.start();
-        }
-        catch (e) {
-            // The connection is not setup to be running so just ignore the error.
-        }
+        let onClosed = new PromiseSource();
+        connection.onclose = (e) => {
+            if (e) {
+                onClosed.reject(e)
+            } else {
+                onClosed.resolve();
+            }
+        };
 
-        try {
-            await connection.start();
-            fail();
-            done();
-        }
-        catch (e) {
-            expect(e.message).toBe("Cannot start a connection that is not in the 'Initial' state.");
-            done();
-        }
+        // Start
+        await connection.start();
+
+        // And then stop
+        await connection.stop();
+        await onClosed;
+
+        // Try to start again, but it should fail (for now...)
+        let ex = await captureException(() => connection.start());
+        expect(ex).not.toBeNull();
+        expect(ex.message).toBe("Cannot start a connection that is not in the 'Initial' state.")
     });
 
-    it("can stop a starting connection", async (done) => {
+    it("can stop a starting connection", async () => {
+        let negotiating = new SyncPoint();
         let options: IHttpConnectionOptions = {
             httpClient: <IHttpClient>{
-                post(url: string): Promise<string> {
-                    connection.stop();
-                    return Promise.resolve("{}");
+                async post(url: string): Promise<string> {
+                    await negotiating.waitToContinue();
+                    return "{ \"connectionId\": \"42\", \"availableTransports\": [\"LongPolling\"] }";
                 },
                 get(url: string): Promise<string> {
-                    connection.stop();
-                    return Promise.resolve("");
+                    return Promise.reject("should not have reached this point");
                 }
             },
             logging: null
-        } as IHttpConnectionOptions;
+        };
 
         let connection = new HttpConnection("http://tempuri.org", options);
 
-        try {
-            await connection.start();
-            done();
-        }
-        catch (e) {
-            fail();
-            done();
-        }
+        // Start the connection
+        await connection.start();
+
+        // Wait for negotiation to begin
+        await negotiating.waitForSyncPoint();
+
+        // Stop the connection, and release the negotiating sync point
+        let stopPromise = connection.stop();
+        negotiating.continue();
+        await stopPromise;
     });
 
-    it("can stop a non-started connection", async (done) => {
+    it("can stop a non-started connection", async () => {
         let connection = new HttpConnection("http://tempuri.org");
         await connection.stop();
-        done();
     });
 
-    it("preserves users connection string", async done => {
+    it("preserves users connection string", async () => {
         let connectUrl: string;
         let fakeTransport: ITransport = {
             connect(url: string): Promise<TransferMode> {
@@ -179,20 +172,13 @@ describe("Connection", () => {
 
         let connection = new HttpConnection("http://tempuri.org?q=myData", options);
 
-        try {
-            await connection.start();
-            fail();
-            done();
-        }
-        catch (e) {
-        }
+        await captureException(() => connection.start());
 
         expect(connectUrl).toBe("http://tempuri.org?q=myData&id=42");
-        done();
     });
 
     eachEndpointUrl((givenUrl: string, expectedUrl: string) => {
-        it("negotiate request puts 'negotiate' at the end of the path", async done => {
+        it("negotiate request puts 'negotiate' at the end of the path", async () => {
             let negotiateUrl: string;
             let connection: HttpConnection;
             let options: IHttpConnectionOptions = {
@@ -208,17 +194,11 @@ describe("Connection", () => {
                     }
                 },
                 logging: null
-            } as IHttpConnectionOptions;
+            };
 
             connection = new HttpConnection(givenUrl, options);
 
-            try {
-                await connection.start();
-                done();
-            } catch (e) {
-                fail();
-                done();
-            }
+            await connection.start();
 
             expect(negotiateUrl).toBe(expectedUrl);
         });
@@ -229,7 +209,7 @@ describe("Connection", () => {
         if (requestedTransport === TransportType.WebSockets) {
             return;
         }
-        it(`cannot be started if requested ${TransportType[requestedTransport]} transport not available on server`, async done => {
+        it(`cannot be started if requested ${TransportType[requestedTransport]} transport not available on server`, async () => {
             let options: IHttpConnectionOptions = {
                 httpClient: <IHttpClient>{
                     post(url: string): Promise<string> {
@@ -241,22 +221,17 @@ describe("Connection", () => {
                 },
                 transport: requestedTransport,
                 logging: null
-            } as IHttpConnectionOptions;
+            };
 
             let connection = new HttpConnection("http://tempuri.org", options);
-            try {
-                await connection.start();
-                fail();
-                done();
-            }
-            catch (e) {
-                expect(e.message).toBe("No available transports found.");
-                done();
-            }
+
+            let ex = await captureException(() => connection.start());
+            expect(ex).not.toBeNull();
+            expect(ex.message).toBe("No available transports found.");
         });
     });
 
-    it("cannot be started if no transport available on server and no transport requested", async done => {
+    it("cannot be started if no transport available on server and no transport requested", async () => {
         let options: IHttpConnectionOptions = {
             httpClient: <IHttpClient>{
                 post(url: string): Promise<string> {
@@ -267,21 +242,15 @@ describe("Connection", () => {
                 }
             },
             logging: null
-        } as IHttpConnectionOptions;
+        };
 
         let connection = new HttpConnection("http://tempuri.org", options);
-        try {
-            await connection.start();
-            fail();
-            done();
-        }
-        catch (e) {
-            expect(e.message).toBe("No available transports found.");
-            done();
-        }
+        let ex = await captureException(() => connection.start());
+        expect(ex).not.toBeNull();
+        expect(ex.message).toBe("No available transports found.");
     });
 
-    it('does not send negotiate request if WebSockets transport requested explicitly', async done => {
+    it('does not send negotiate request if WebSockets transport requested explicitly', async () => {
         let options: IHttpConnectionOptions = {
             httpClient: <IHttpClient>{
                 post(url: string): Promise<string> {
@@ -293,20 +262,13 @@ describe("Connection", () => {
             },
             transport: TransportType.WebSockets,
             logging: null
-        } as IHttpConnectionOptions;
+        };
 
         let connection = new HttpConnection("http://tempuri.org", options);
-        try {
-            await connection.start();
-            fail();
-            done();
-        }
-        catch (e) {
-            // WebSocket is created when the transport is connecting which happens after
-            // negotiate request would be sent. No better/easier way to test this.
-            expect(e.message).toBe("WebSocket is not defined");
-            done();
-        }
+
+        let ex = await captureException(() => connection.start());
+        expect(ex).not.toBeNull();
+        expect(ex.message).toBe("WebSocket is not defined");
     });
 
     [

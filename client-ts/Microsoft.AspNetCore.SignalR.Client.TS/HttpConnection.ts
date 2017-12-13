@@ -13,7 +13,7 @@ const enum ConnectionState {
     Initial,
     Connecting,
     Connected,
-    Disconnected
+    Disconnected,
 }
 
 interface INegotiateResponse {
@@ -125,7 +125,7 @@ export class HttpConnection implements IConnection {
     }
 
     private isITransport(transport: any): transport is ITransport {
-        return typeof(transport) === "object" && "connect" in transport;
+        return typeof (transport) === "object" && "connect" in transport;
     }
 
     private changeState(from: ConnectionState, to: ConnectionState): Boolean {
@@ -144,7 +144,7 @@ export class HttpConnection implements IConnection {
         return this.transport.send(data);
     }
 
-    async stop(error? : Error): Promise<void> {
+    async stop(error?: Error): Promise<void> {
         let previousState = this.connectionState;
         this.connectionState = ConnectionState.Disconnected;
 
@@ -170,7 +170,7 @@ export class HttpConnection implements IConnection {
         }
     }
 
-    private resolveUrl(url: string) : string {
+    private resolveUrl(url: string): string {
         // startsWith is not supported in IE
         if (url.lastIndexOf("https://", 0) === 0 || url.lastIndexOf("http://", 0) === 0) {
             return url;

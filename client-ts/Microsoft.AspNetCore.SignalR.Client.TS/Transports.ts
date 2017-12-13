@@ -202,7 +202,7 @@ export class LongPollingTransport implements ITransport {
         // Set a flag indicating we have inherent keep-alive in this transport.
         connection.features.inherentKeepAlive = true;
 
-        if (requestedTransferMode === TransferMode.Binary && (typeof new XMLHttpRequest().responseType !== "string")) {
+        if (requestedTransferMode === TransferMode.Binary && !this.httpClient.supportsBinary) {
             // This will work if we fix: https://github.com/aspnet/SignalR/issues/742
             throw new Error("Binary protocols over XmlHttpRequest not implementing advanced features are not supported.");
         }
@@ -211,68 +211,59 @@ export class LongPollingTransport implements ITransport {
         return Promise.resolve(requestedTransferMode);
     }
 
-    private poll(url: string, transferMode: TransferMode): void {
-        if (!this.shouldPoll) {
-            return;
+    private async poll(url: string, transferMode: TransferMode): Promise<void> {
+        let headers = null;
+        if (this.jwtBearer) {
+            headers = new Map<string, string>();
+            headers.set("Authorization", `Bearer ${this.jwtBearer()}`);
         }
 
-        let pollXhr = new XMLHttpRequest();
+        let responseType: XMLHttpRequestResponseType = "";
+        if (transferMode === TransferMode.Binary) {
+            responseType = "arraybuffer";
+        }
 
-        pollXhr.onload = () => {
-            if (pollXhr.status == 200) {
-                if (this.onreceive) {
-                    try {
-                        let response = transferMode === TransferMode.Text
-                            ? pollXhr.responseText
-                            : pollXhr.response;
+        while (this.shouldPoll) {
+            try {
+                let resp = await this.httpClient.get(`${url}&_=${Date.now()}`, headers, responseType);
+                if (resp.status == 204) {
+                    if (this.onclose) {
+                        this.onclose();
+                    }
+                    return;
+                }
+                else {
+                    if (this.onreceive) {
+                        try {
+                            let response = transferMode === TransferMode.Text
+                                ? pollXhr.responseText
+                                : pollXhr.response;
 
-                        if (response) {
-                            this.logger.log(LogLevel.Trace, `(LongPolling transport) data received: ${response}`);
-                            this.onreceive(response);
+                            if (response) {
+                                this.logger.log(LogLevel.Trace, `(LongPolling transport) data received: ${response}`);
+                                this.onreceive(response);
+                            }
+                            else {
+                                this.logger.log(LogLevel.Information, "(LongPolling transport) timed out");
+                            }
+                        } catch (error) {
+                            if (this.onclose) {
+                                this.onclose(error);
+                            }
+                            return;
                         }
-                        else {
-                            this.logger.log(LogLevel.Information, "(LongPolling transport) timed out");
-                        }
-                    } catch (error) {
-                        if (this.onclose) {
-                            this.onclose(error);
-                        }
-                        return;
                     }
                 }
-                this.poll(url, transferMode);
-            }
-            else if (this.pollXhr.status == 204) {
+            } catch (ex) {
                 if (this.onclose) {
-                    this.onclose();
+                    this.onclose(ex);
                 }
+                return;
             }
-            else {
-                if (this.onclose) {
-                    this.onclose(new HttpError(pollXhr.statusText, pollXhr.status));
-                }
-            }
-        };
-
-        pollXhr.onerror = () => {
-            if (this.onclose) {
-                // network related error or denied cross domain request
-                this.onclose(new Error("Sending HTTP request failed."));
-            }
-        };
+        }
 
         pollXhr.ontimeout = () => {
             this.poll(url, transferMode);
-        }
-
-        this.pollXhr = pollXhr;
-
-        this.pollXhr.open("GET", `${url}&_=${Date.now()}`, true);
-        if (this.jwtBearer) {
-            this.pollXhr.setRequestHeader("Authorization", `Bearer ${this.jwtBearer()}`);
-        }
-        if (transferMode === TransferMode.Binary) {
-            this.pollXhr.responseType = "arraybuffer";
         }
 
         // TODO: consider making timeout configurable
