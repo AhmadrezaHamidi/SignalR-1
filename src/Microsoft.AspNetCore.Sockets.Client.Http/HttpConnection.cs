@@ -38,6 +38,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
         private volatile Task _receiveLoopTask;
         private TaskCompletionSource<object> _startTcs;
         private TaskCompletionSource<object> _closeTcs;
+        private TaskCompletionSource<object> _stopTcs;
         private TaskQueue _eventQueue;
         private readonly ITransportFactory _transportFactory;
         private string _connectionId;
@@ -89,6 +90,9 @@ namespace Microsoft.AspNetCore.Sockets.Client
             }
 
             _transportFactory = new DefaultTransportFactory(transportType, _loggerFactory, _httpClient, httpOptions);
+
+            _stopTcs = new TaskCompletionSource<object>();
+            _stopTcs.SetResult(null);
         }
 
         public HttpConnection(Uri url, ITransportFactory transportFactory, ILoggerFactory loggerFactory, HttpOptions httpOptions)
@@ -178,7 +182,9 @@ namespace Microsoft.AspNetCore.Sockets.Client
             // the connection was starting
             if (ChangeState(from: ConnectionState.Connecting, to: ConnectionState.Connected) == ConnectionState.Connecting)
             {
+                await _stopTcs.Task;
                 _closeTcs = new TaskCompletionSource<object>();
+                _stopTcs = new TaskCompletionSource<object>();
 
                 _ = Input.Completion.ContinueWith(async t =>
                 {
@@ -508,12 +514,6 @@ namespace Microsoft.AspNetCore.Sockets.Client
                 // _startTask is returned to the user and they should handle exceptions.
             }
 
-            // Capture the _closeTcs before causing the Input completion to run
-            // This fixes a race when the Closed event starts the client again
-            // and the client creation resets the _closeTcs causing the currently
-            // running StopAsync to wait on the new _closeTcs
-            var closeTcs = _closeTcs;
-
             if (_transportChannel != null)
             {
                 Output.TryComplete();
@@ -529,9 +529,10 @@ namespace Microsoft.AspNetCore.Sockets.Client
                 await _receiveLoopTask;
             }
 
-            if (closeTcs != null)
+            if (_closeTcs != null)
             {
-                await closeTcs.Task;
+                await _closeTcs.Task;
+                _stopTcs.SetResult(null);
             }
         }
 
