@@ -150,8 +150,8 @@ namespace Microsoft.AspNetCore.Sockets.Client.Internal
         private static readonly Action<ILogger, DateTime, string, Exception> _stoppingClient =
             LoggerMessage.Define<DateTime, string>(LogLevel.Information, new EventId(18, nameof(StoppingClient)), "{time}: Connection Id {connectionId}: Stopping client.");
 
-        private static readonly Action<ILogger, DateTime, string, string, Exception> _exceptionThrownFromCallback =
-            LoggerMessage.Define<DateTime, string, string>(LogLevel.Error, new EventId(19, nameof(ExceptionThrownFromCallback)), "{time}: Connection Id {connectionId}: An exception was thrown from the '{callback}' callback.");
+        private static readonly Action<ILogger, DateTime, string, Exception> _exceptionThrownFromCallback =
+            LoggerMessage.Define<DateTime, string>(LogLevel.Error, new EventId(19, nameof(ExceptionThrownFromCallback)), "{time}: An exception was thrown from the '{callback}' callback.");
 
         private static readonly Action<ILogger, DateTime, string, Exception> _disposingClient =
             LoggerMessage.Define<DateTime, string>(LogLevel.Information, new EventId(20, nameof(DisposingClient)), "{time}: Connection Id {connectionId}: Disposing client.");
@@ -555,7 +555,7 @@ namespace Microsoft.AspNetCore.Sockets.Client.Internal
             }
         }
 
-        public static void ConnectionStateChanged(this ILogger logger, string connectionId, HttpConnection.ConnectionState previousState, HttpConnection.ConnectionState newState)
+        public static void ConnectionStateChanged(this ILogger logger, string connectionId, HttpConnectionOneOff.ConnectionState previousState, HttpConnectionOneOff.ConnectionState newState)
         {
             if (logger.IsEnabled(LogLevel.Debug))
             {
@@ -571,11 +571,11 @@ namespace Microsoft.AspNetCore.Sockets.Client.Internal
             }
         }
 
-        public static void ExceptionThrownFromCallback(this ILogger logger, string connectionId, string callbackName, Exception exception)
+        public static void ExceptionThrownFromCallback(this ILogger logger, string callbackName, Exception exception)
         {
             if (logger.IsEnabled(LogLevel.Error))
             {
-                _exceptionThrownFromCallback(logger, DateTime.Now, connectionId, callbackName, exception);
+                _exceptionThrownFromCallback(logger, DateTime.Now, callbackName, exception);
             }
         }
 
