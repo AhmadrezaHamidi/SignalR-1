@@ -28,12 +28,12 @@ namespace Microsoft.AspNetCore.Sockets.Client
         private readonly ILoggerFactory _loggerFactory;
         private readonly ILogger _logger;
         private volatile ConnectionState _connectionState = ConnectionState.Disconnected;
+        private readonly object _stateChangeLock = new object();
         private readonly HttpClient _httpClient;
         private readonly HttpOptions _httpOptions;
         private readonly List<ReceiveCallback> _callbacks = new List<ReceiveCallback>();
         private readonly TransportType _requestedTransportType = TransportType.All;
         private readonly ITransportFactory _transportFactory;
-        private readonly object _stateChangeLock = new object();
 
         private HttpConnectionOneOff _connection;
         private List<Action<Exception>> _closed = new List<Action<Exception>>();
