@@ -555,7 +555,7 @@ namespace Microsoft.AspNetCore.Sockets.Client.Internal
             }
         }
 
-        public static void ConnectionStateChanged(this ILogger logger, string connectionId, HttpConnectionOneOff.ConnectionState previousState, HttpConnectionOneOff.ConnectionState newState)
+        public static void ConnectionStateChanged(this ILogger logger, string connectionId, ConnectionState previousState, ConnectionState newState)
         {
             if (logger.IsEnabled(LogLevel.Debug))
             {
