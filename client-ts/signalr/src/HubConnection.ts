@@ -13,8 +13,6 @@ import { Base64EncodedHubProtocol } from "./Base64EncodedHubProtocol"
 import { ILogger, LogLevel } from "./ILogger"
 import { ConsoleLogger, NullLogger, LoggerFactory } from "./Loggers"
 
-export { JsonHubProtocol }
-
 export interface IHubConnectionOptions extends IHttpConnectionOptions {
     protocol?: IHubProtocol;
     timeoutInMilliseconds?: number;

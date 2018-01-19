@@ -6,3 +6,4 @@ import 'es6-promise/dist/es6-promise.auto.js';
 import './ConnectionTests'
 import './HubConnectionTests'
 import './WebSocketTests'
+import './TapReporter'

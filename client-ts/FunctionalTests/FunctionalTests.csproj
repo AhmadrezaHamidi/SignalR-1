@@ -25,9 +25,6 @@
   </ItemGroup>
 
   <Target Name="ClientBuild" BeforeTargets="AfterBuild">
-      <!-- This will result in a double build of the JavaScript modules. Not sure the best way to deal with that right now. -->
-      <Exec Command="npm run build" WorkingDirectory="$(MSBuildThisFileDirectory)/.." />
-
       <Exec Command="npm run build" />
           
       <ItemGroup>

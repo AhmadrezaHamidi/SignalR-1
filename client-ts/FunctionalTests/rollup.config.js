@@ -25,7 +25,11 @@ export default {
     context: "window",
     external: [ "@aspnet/signalr", "@aspnet/signalr-protocol-msgpack" ],
     plugins: [
-        commonjs(),
+        commonjs({
+            namedExports: {
+                'jasmine-tapreporter': [ 'TAPReporter' ]
+            }
+        }),
         resolve(),
         sourceMaps()
     ]
