@@ -1,11 +1,23 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-import { TransportType, HubConnection, LogLevel } from "@aspnet/signalr";
+import { TransportType, HubConnection, LogLevel, IHubProtocol, IHubConnectionOptions, JsonHubProtocol } from "@aspnet/signalr";
 
 import { eachTransportAndProtocol, eachTransport } from "./Common";
 
+import {TapReporter} from "./TapReporter"
+
 var TESTHUBENDPOINT_URL = '/testhub';
+
+function createHubConnection(url: string, transport: TransportType, protocol: IHubProtocol, additionalOptions?: IHubConnectionOptions): HubConnection {
+    additionalOptions = additionalOptions || {};
+    return new HubConnection(url, {
+        transport, 
+        protocol,
+        logger: TapReporter.Default,
+        ...additionalOptions,
+    });
+}
 
 describe('hubConnection', function () {
     eachTransportAndProtocol(function (transportType, protocol) {
@@ -13,11 +25,7 @@ describe('hubConnection', function () {
             it('can invoke server method and receive result', function (done) {
                 var message = '你好，世界！';
 
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
                 hubConnection.onclose(function (error) {
                     expect(error).toBe(undefined);
                     done();
@@ -40,11 +48,7 @@ describe('hubConnection', function () {
             it('can invoke server method non-blocking and not receive result', function (done) {
                 var message = '你好，世界！';
 
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
                 hubConnection.onclose(function (error) {
                     expect(error).toBe(undefined);
                     done();
@@ -63,11 +67,7 @@ describe('hubConnection', function () {
             });
 
             it('can invoke server method structural object and receive structural result', function (done) {
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
 
                 hubConnection.on('CustomObject', function (customObject) {
                     expect(customObject.Name).toBe('test');
@@ -89,11 +89,7 @@ describe('hubConnection', function () {
             });
 
             it('can stream server method and receive result', function (done) {
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
 
                 hubConnection.onclose(function (error) {
                     expect(error).toBe(undefined);
@@ -123,11 +119,7 @@ describe('hubConnection', function () {
 
             it('rethrows an exception from the server when invoking', function (done) {
                 var errorMessage = 'An error occurred.';
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
 
                 hubConnection.start().then(function () {
                     hubConnection.invoke('ThrowException', errorMessage).then(function () {
@@ -147,11 +139,7 @@ describe('hubConnection', function () {
             });
 
             it('throws an exception when invoking streaming method with invoke', function (done) {
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
 
                 hubConnection.start().then(function () {
                     hubConnection.invoke('EmptyStream').then(function () {
@@ -171,11 +159,7 @@ describe('hubConnection', function () {
             });
 
             it('throws an exception when receiving a streaming result for method called with invoke', function (done) {
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
 
                 hubConnection.start().then(function () {
                     hubConnection.invoke('Stream').then(function () {
@@ -196,11 +180,7 @@ describe('hubConnection', function () {
 
             it('rethrows an exception from the server when streaming', function (done) {
                 var errorMessage = 'An error occurred.';
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
 
                 hubConnection.start().then(function () {
                     hubConnection.stream('StreamThrowException', errorMessage).subscribe({
@@ -225,11 +205,7 @@ describe('hubConnection', function () {
             });
 
             it('throws an exception when invoking hub method with stream', function (done) {
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
 
                 hubConnection.start().then(function () {
                     hubConnection.stream('Echo', '42').subscribe({
@@ -254,11 +230,7 @@ describe('hubConnection', function () {
             });
 
             it('can receive server calls', function (done) {
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
 
                 var message = '你好 SignalR！';
 
@@ -286,11 +258,7 @@ describe('hubConnection', function () {
             });
 
             it('can receive server calls without rebinding handler when restarted', function (done) {
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
 
                 var message = '你好 SignalR！';
 
@@ -349,11 +317,7 @@ describe('hubConnection', function () {
                     ServerSentEvents: 'Error occurred'
                 };
 
-                var hubConnection = new HubConnection('http://' + document.location.host + '/uncreatable', {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection('http://' + document.location.host + '/uncreatable', transportType, protocol);
 
                 hubConnection.onclose(function (error) {
                     expect(error.message).toMatch(errorRegex[TransportType[transportType]]);
@@ -363,11 +327,7 @@ describe('hubConnection', function () {
             });
 
             it('can handle different types', function (done) {
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
                 hubConnection.onclose(function (error) {
                     expect(error).toBe(undefined);
                     done();
@@ -418,11 +378,7 @@ describe('hubConnection', function () {
             it('can be restarted', function (done) {
                 var message = '你好，世界！';
 
-                var hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
-                    transport: transportType,
-                    protocol: protocol,
-                    logger: LogLevel.Trace
-                });
+                var hubConnection = createHubConnection(TESTHUBENDPOINT_URL, transportType, protocol);
 
                 let closeCount = 0;
                 hubConnection.onclose(function (error) {
@@ -473,11 +429,7 @@ describe('hubConnection', function () {
                 var hubConnection;
                 getJwtToken('http://' + document.location.host + '/generateJwtToken')
                     .then(jwtToken => {
-                        hubConnection = new HubConnection('/authorizedhub', {
-                            transport: transportType,
-                            logger: LogLevel.Trace,
-                            accessToken: () => jwtToken
-                        });
+                        hubConnection = createHubConnection('/authorizedhub', transportType, new JsonHubProtocol(), { accessToken: () => jwtToken });
                         hubConnection.onclose(function (error) {
                             expect(error).toBe(undefined);
                             done();

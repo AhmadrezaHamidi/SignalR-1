@@ -1,38 +1,40 @@
-class TapReporter implements jasmine.CustomReporter {
-    constructor(private log: (message?: any, ...optionalParams: any[]) => void) {
+import { ILogger, LogLevel } from '@aspnet/signalr';
+
+export class TapReporter implements jasmine.CustomReporter, ILogger {
+    static Default: TapReporter = new TapReporter(console.log);
+
+    constructor(private output: (message?: any, ...optionalParams: any[]) => void) {
     }
 
-    specLog(message?: any, ...optionalParams: any[]) {
+    public jasmineStarted(suiteInfo: jasmine.SuiteInfo) {
+        this.output("TAP version 13");
+        this.output(`1..${suiteInfo.totalSpecsDefined}`);
+    }
+
+    public suiteStarted(result: jasmine.CustomReporterResult) {
 
     }
 
-    jasmineStarted?(suiteInfo: jasmine.SuiteInfo) {
-        this.log("TAP version 13");
-        this.log(`1..${suiteInfo.totalSpecsDefined}`);
-    }
-
-    suiteStarted?(result: jasmine.CustomReporterResult) {
-
-    }
-
-    specStarted?(result: jasmine.CustomReporterResult) {
+    public specStarted(result: jasmine.CustomReporterResult) {
         
     }
     
-    specDone?(result: jasmine.CustomReporterResult) {
+    public specDone(result: jasmine.CustomReporterResult) {
         
     }
 
-    suiteDone?(result: jasmine.CustomReporterResult) {
+    public suiteDone(result: jasmine.CustomReporterResult) {
         
     }
 
-    jasmineDone?(runDetails: jasmine.RunDetails) {
+    public jasmineDone(runDetails: jasmine.RunDetails) {
         
+    }
+
+    public log(logLevel: LogLevel, message: string) {
+
     }
 }
 
 // Suppress console.log output, and send it to the reporter instead
-let reporter = new TapReporter(console.log)
-jasmine.getEnv().addReporter(reporter);
-console.log = reporter.specLog;
+jasmine.getEnv().addReporter(TapReporter.Default);

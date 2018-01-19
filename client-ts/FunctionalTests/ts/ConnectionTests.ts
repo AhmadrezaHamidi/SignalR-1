@@ -3,12 +3,15 @@
 
 import { HttpConnection, LogLevel, TransportType } from "@aspnet/signalr"
 import { eachTransport, ECHOENDPOINT_URL } from "./Common"
+import { TapReporter } from "./TapReporter";
 
 describe('connection', function () {
     if (typeof WebSocket !== 'undefined') {
         it("can connect to the server without specifying transport explicitly", function (done) {
             var message = "Hello World!";
-            var connection = new HttpConnection(ECHOENDPOINT_URL);
+            var connection = new HttpConnection(ECHOENDPOINT_URL, {
+                logger: TapReporter.Default
+            });
 
             var received = "";
             connection.onreceive = function (data) {
@@ -39,7 +42,7 @@ describe('connection', function () {
             // and the leading '/' should be automatically added to the url
             var connection = new HttpConnection("echo", {
                 transport: transportType,
-                logger: LogLevel.Trace
+                logger: TapReporter.Default
             });
 
             var received = "";
