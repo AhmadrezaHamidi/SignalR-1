@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Sockets.Features;
 using Microsoft.AspNetCore.Sockets.Internal;
 using Microsoft.AspNetCore.Sockets.Internal.Transports;
@@ -363,6 +364,9 @@ namespace Microsoft.AspNetCore.Sockets
             // Establish the connection
             var connection = _manager.CreateConnection();
 
+            //Set the IHttpConnectionFeature now that we can access it.
+            connection.Features.Set(context.Features.Get<IHttpConnectionFeature>());
+
             // Set the Connection ID on the logging scope so that logs from now on will have the
             // Connection ID metadata set.
             logScope.ConnectionId = connection.ConnectionId;
@@ -537,6 +541,7 @@ namespace Microsoft.AspNetCore.Sockets
                 return null;
             }
 
+            connection.Features.Set(context.Features.Get<IHttpConnectionFeature>());
             return connection;
         }
     }
