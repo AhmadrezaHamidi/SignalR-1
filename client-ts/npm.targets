@@ -1,0 +1,94 @@
+<Project>
+  <PropertyGroup>
+    <DistDir>$(MSBuildProjectDirectory)/dist/</DistDir>
+    <EsmDir>$(DistDir)esm/</EsmDir>
+    <CjsDir>$(DistDir)cjs/</CjsDir>
+    <BrowserDir>$(DistDir)browser/</BrowserDir>
+    <TsConfig>$(MSBuildProjectDirectory)/tsconfig.json</TsConfig>
+    <TsBaseConfig>$(MSBuildThisFileDirectory)/tsconfig-base.json</TsBaseConfig>
+    <RollupConfig>$(MSBuildProjectDirectory)/rollup.config.js</RollupConfig>
+    <RollupBaseConfig>$(MSBuildThisFileDirectory)/rollup-base.js</RollupBaseConfig>
+    <PackageJson>$(MSBuildProjectDirectory)/package.json</PackageJson>
+    <PackageLockJson>$(MSBuildProjectDirectory)/package-lock.json</PackageLockJson>
+    <BrowserMap>$(BrowserDir)$(BrowserOutputName).js.map</BrowserMap>
+    <BrowserFile>$(BrowserDir)$(BrowserOutputName).js</BrowserFile>
+    <BrowserMinFile>$(BrowserDir)$(BrowserOutputName).min.js</BrowserMinFile>
+    <BrowserMinMap>$(BrowserDir)$(BrowserOutputName).min.js.map</BrowserMinMap>
+  </PropertyGroup>
+
+  <!-- Inputs -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildProjectDirectory)/src/**/*.ts;" />
+    <Test Include="$(MSBuildProjectDirectory)/spec/**/*.ts;" />
+  </ItemGroup>
+
+  <!-- Compute outputs -->
+  <ItemGroup>
+    <EsmOutput Include="@(Compile -> '$(EsmDir)%(RecurseDir)%(FileName).js')" />
+    <EsmOutput Include="@(Compile -> '$(EsmDir)%(RecurseDir)%(FileName).d.ts')" />
+    <EsmOutput Include="@(Compile -> '$(EsmDir)%(RecurseDir)%(FileName).js.map')" />
+
+    <CjsOutput Include="@(Compile -> '$(CjsDir)%(RecurseDir)%(FileName).js')" />
+    <CjsOutput Include="@(Compile -> '$(CjsDir)%(RecurseDir)%(FileName).js.map')" />
+
+    <BrowserOutput Include="$(BrowserDir)$(BrowserOutputName).js" />
+    <BrowserOutput Include="$(BrowserMap)" />
+
+    <UglifyOutput Include="$(BrowserMinFile)" />
+    <UglifyOutput Include="$(BrowserMinMap)" />
+
+    <RootDtsFile Include="$(EsmDir)index.d.ts" />
+
+    <TscInput Include="@(Compile);$(TsConfig);$(TsBaseConfig);$(PackageJson);$(PackageLockJson)" />
+    <RollupInput Include="@(CjsOutput);$(RollupConfig);$(RollupBaseConfig);$(PackageJson);$(PackageLockJson)" />
+    <UglifyInput Include="@(BrowserOutput);$(PackageJson);$(PackageLockJson)" />
+  </ItemGroup>
+
+  <Target Name="VerifyRequiredProperties">
+    <Error Text="Missing required property: BrowserOutputName" Condition="'$(BrowserOutputName)' == ''" />
+  </Target>
+
+  <Target Name="Clean">
+    <RemoveDir Directories="$(DistDir)" />
+  </Target>
+
+  <Target Name="BuildEsm" Inputs="@(TscInput)" Outputs="@(EsmOutput)">
+    <ItemGroup>
+        <!-- Have to escape the semicolon ';' that we want in the line because it's the separator for MSBuild items -->
+        <_ExportAsNamespaceLines Include="export as namespace $(ExportAsNamespace)%3B" />
+    </ItemGroup>
+
+    <PropertyGroup>
+        <_EsmTscArgs>--project "$(TsConfig)" --module es2015 --outDir $(EsmDir) --target ES2015 -d</_EsmTscArgs>
+    </PropertyGroup>
+
+    <Message Text="tsc $(_EsmTscArgs)" Importance="high" />
+    <Exec Command="node $(MSBuildThisFileDirectory)node_modules/typescript/bin/tsc $(_EsmTscArgs)" WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <Message Text="exporting $(EsmDir)index.d.ts as namespace $(ExportAsNamespace)" Condition="'$(ExportAsNamespace)' != ''" />
+    <WriteLinesToFile File="$(EsmDir)index.d.ts" Lines="@(_ExportAsNamespaceLines)" Condition="'$(ExportAsNamespace)' != ''" />
+  </Target>
+
+  <Target Name="BuildCjs" Inputs="@(TscInput)" Outputs="@(CjsOutput)">
+    <PropertyGroup>
+        <_CjsTscArgs>--project "$(TsConfig)" --module commonjs --outDir "$(CjsDir)" --target ES5</_CjsTscArgs>
+    </PropertyGroup>
+
+    <Message Text="tsc $(_CjsTscArgs)" Importance="high" />
+    <Exec Command="node $(MSBuildThisFileDirectory)node_modules/typescript/bin/tsc $(_CjsTscArgs)" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
+  <Target Name="BuildBrowser" Inputs="@(RollupInput)" Outputs="@(BrowserOutput)" DependsOnTargets="BuildCjs">
+    <Message Text="rollup -c" Importance="high" />
+    <Exec Command="node $(MSBuildThisFileDirectory)node_modules/rollup/bin/rollup -c" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
+  <Target Name="BuildUglify" Inputs="@(UglifyInput)" Outputs="@(UglifyOutput)" DependsOnTargets="BuildBrowser">
+    <PropertyGroup>
+        <_UglifyArgs>--source-map "url='$(BrowserOutputName).min.js.map',content='$(BrowserMap.Replace("\", "/"))'" --comments -o "$(BrowserMinFile)" "$(BrowserFile)"</_UglifyArgs>
+    </PropertyGroup>
+    <Message Text="uglifyjs $(_UglifyArgs)" Importance="high" />
+    <Exec Command="node $(MSBuildThisFileDirectory)node_modules/uglify-js/bin/uglifyjs $(_UglifyArgs)" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
+  <Target Name="Build" DependsOnTargets="BuildEsm;BuildUglify" />
+</Project>

@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <BrowserOutputName>signalr</BrowserOutputName>
+    <ExportAsNamespace>signalr</ExportAsNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)/../npm.targets" />
+</Project>

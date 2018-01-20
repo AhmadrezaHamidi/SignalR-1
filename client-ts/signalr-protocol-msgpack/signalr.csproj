@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <BrowserOutputName>signalr-protocol-msgpack</BrowserOutputName>
+
+    <!-- Can't do this until https://github.com/Microsoft/TypeScript/issues/20990 is resolved -->
+    <!-- <ExportAsNamespace>signalr.protocol.msgpack</ExportAsNamespace> -->
+
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)/../npm.targets" />
+</Project>
