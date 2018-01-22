@@ -57,26 +57,6 @@ namespace Microsoft.AspNetCore.SignalR.Client.FunctionalTests
 
             return result;
         }
-
-        public int GetLocalPort()
-        {
-            return (int)Context.Connection.LocalPort;
-        }
-
-        public int GetRemotePort()
-        {
-            return (int)Context.Connection.RemotePort;
-        }
-
-        public string GetLocalIP()
-        {
-            return Context.Connection.LocalIpAddress.ToString();
-        }
-
-        public string GetRemoteIP()
-        {
-            return Context.Connection.RemoteIpAddress.ToString();
-        }
     }
 
     public class DynamicTestHub : DynamicHub
